@@ -52,6 +52,14 @@ export default {
 					DEFAULT: 'hsl(var(--card))',
 					foreground: 'hsl(var(--card-foreground))'
 				},
+				// Agent-specific colors
+				agent: {
+					thinking: 'hsl(var(--agent-thinking))',
+					success: 'hsl(var(--agent-success))',
+					error: 'hsl(var(--agent-error))',
+					tool: 'hsl(var(--agent-tool))'
+				},
+				terminal: 'hsl(var(--terminal))',
 				sidebar: {
 					DEFAULT: 'hsl(var(--sidebar-background))',
 					foreground: 'hsl(var(--sidebar-foreground))',
@@ -84,11 +92,40 @@ export default {
 					to: {
 						height: '0'
 					}
+				},
+				'pulse-glow': {
+					'0%, 100%': {
+						boxShadow: '0 0 20px hsl(var(--primary) / 0.5)'
+					},
+					'50%': {
+						boxShadow: '0 0 40px hsl(var(--primary) / 0.8)'
+					}
+				},
+				'thinking': {
+					'0%': {
+						opacity: '0.5',
+						transform: 'scale(0.95)'
+					},
+					'50%': {
+						opacity: '1',
+						transform: 'scale(1.02)'
+					},
+					'100%': {
+						opacity: '0.5',
+						transform: 'scale(0.95)'
+					}
+				},
+				'terminal-flicker': {
+					'0%, 100%': { opacity: '1' },
+					'50%': { opacity: '0.8' }
 				}
 			},
 			animation: {
 				'accordion-down': 'accordion-down 0.2s ease-out',
-				'accordion-up': 'accordion-up 0.2s ease-out'
+				'accordion-up': 'accordion-up 0.2s ease-out',
+				'pulse-glow': 'pulse-glow 2s ease-in-out infinite',
+				'thinking': 'thinking 2s ease-in-out infinite',
+				'terminal-flicker': 'terminal-flicker 1s ease-in-out infinite'
 			}
 		}
 	},
