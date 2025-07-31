@@ -261,45 +261,55 @@ export default function AgentDashboard() {
               </div>
             </Card>
 
-            {/* Tool Status */}
+            {/* Built-in Capabilities */}
             <Card className="p-6">
-              <h3 className="text-lg font-semibold mb-4">Available Tools</h3>
+              <h3 className="text-lg font-semibold mb-4">Built-in Capabilities</h3>
               <div className="space-y-2">
                 {[
-                  { name: 'write_file', status: 'active' },
-                  { name: 'run_shell', status: 'active' },
-                  { name: 'git_commit', status: 'active' },
-                  { name: 'code_search', status: 'idle' },
-                  { name: 'web_browse', status: 'idle' }
-                ].map((tool) => (
-                  <div key={tool.name} className="flex items-center justify-between p-2 rounded bg-secondary/50">
-                    <span className="font-mono text-sm">{tool.name}</span>
-                    <Badge 
-                      variant={tool.status === 'active' ? 'default' : 'secondary'}
-                      className="text-xs"
-                    >
-                      {tool.status}
+                  { name: 'edit_files', description: 'Direct file editing', icon: '✏️' },
+                  { name: 'run_commands', description: 'Execute shell commands', icon: '⚡' },
+                  { name: 'git_operations', description: 'Git add, commit, push', icon: '🔄' },
+                  { name: 'test_runner', description: 'Run tests & validate', icon: '🧪' },
+                  { name: 'code_analysis', description: 'Parse & understand code', icon: '🔍' },
+                  { name: 'web_search', description: 'Find documentation', icon: '🌐' }
+                ].map((capability) => (
+                  <div key={capability.name} className="flex items-center gap-3 p-2 rounded bg-secondary/20 border border-border/50">
+                    <span className="text-lg">{capability.icon}</span>
+                    <div className="flex-1">
+                      <div className="font-mono text-sm text-foreground">{capability.name}</div>
+                      <div className="text-xs text-muted-foreground">{capability.description}</div>
+                    </div>
+                    <Badge variant="outline" className="text-xs bg-agent-success/20 text-agent-success border-agent-success/30">
+                      ready
                     </Badge>
                   </div>
                 ))}
               </div>
             </Card>
 
-            {/* Model Router */}
+            {/* Agent Runtime */}
             <Card className="p-6">
-              <h3 className="text-lg font-semibold mb-4">Model Router</h3>
+              <h3 className="text-lg font-semibold mb-4">Agent Runtime</h3>
               <div className="space-y-3 text-sm">
                 <div className="flex justify-between">
-                  <span>Current Model:</span>
-                  <span className="font-mono text-primary">claude-3-opus</span>
+                  <span>Model:</span>
+                  <span className="font-mono text-primary">claude-sonnet-4</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Context:</span>
                   <span className="font-mono">45k/200k</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Temperature:</span>
-                  <span className="font-mono text-agent-tool">0.4</span>
+                  <span>Mode:</span>
+                  <span className="font-mono text-agent-success">autonomous</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Sandbox:</span>
+                  <span className="font-mono text-agent-tool">docker+firejail</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Project:</span>
+                  <span className="font-mono text-muted-foreground">./workspace</span>
                 </div>
               </div>
             </Card>
