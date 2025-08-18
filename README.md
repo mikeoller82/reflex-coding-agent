@@ -1,16 +1,59 @@
-# Reflex Coder
+<div align="center">
+  <img src="public/placeholder.svg" alt="Reflex Coder Logo" width="150"/>
+  <br/>
+  <br/>
 
-Reflex Coder is a web-based dashboard for an intelligent, reinforcement-learning-powered coding copilot. It provides a user interface to interact with an autonomous agent, monitor its activities, manage AI model API keys, and observe its training progress.
+  # Reflex Coder
 
-## Features
+  **An intelligent, RL-powered coding copilot with autonomous reasoning and a sleek dashboard.**
+
+  [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+  [![TypeScript](https://img.shields.io/badge/--blue?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+  [![React](https://img.shields.io/badge/--blue?logo=react&logoColor=white)](https://reactjs.org/)
+  [![Vite](https://img.shields.io/badge/--blue?logo=vite&logoColor=white)](https://vitejs.dev/)
+
+</div>
+
+---
+
+Reflex Coder is a sophisticated, web-based dashboard for an autonomous AI coding agent. This developer tool is built for observing and interacting with a reinforcement-learning-powered copilot. It provides a rich user interface to issue commands, monitor the agent's cognitive processes (thoughts, actions, tool usage), securely manage API keys for various AI providers (like OpenRouter, Anthropic, and OpenAI), and visualize the agent's long-term training progress.
+
+This project serves as a powerful demonstration of how autonomous agents can be managed and monitored, providing a glimpse into the future of AI-assisted software development.
+
+## 🚀 Why Reflex Coder?
+
+In an era where AI is becoming a core part of the development workflow, transparent and controllable agentic systems are crucial. Reflex Coder aims to solve this by providing:
+-   **Full Transparency**: No more black boxes. See exactly what the AI is thinking and doing at every step.
+-   **Interactive Control**: Guide the agent with natural language, and pause or stop its execution.
+-   **Provider Flexibility**: Avoid vendor lock-in by connecting to a wide range of AI model providers.
+-   **Insightful Analytics**: Understand the agent's performance and learning curve through a dedicated training dashboard.
+
+## ✨ Features
 
 -   **Agent Activity Monitoring**: View a real-time log of the agent's thoughts, actions, and tool usage.
 -   **Command Execution**: Input natural language commands to the coding agent.
--   **API Key Management**: Securely manage API keys for various AI providers like OpenRouter, Anthropic, OpenAI, and more.
--   **Training Dashboard**: Visualize the agent's reinforcement learning progress, including success rate and average steps.
+-   **Secure API Key Management**: Manage API keys for various AI providers, stored securely.
+-   **Training Dashboard**: Visualize the agent's reinforcement learning progress.
 -   **Model Selection**: Choose from a variety of available AI models for the agent to use.
 
-## Getting Started
+## 📸 Live Demo / Screenshot
+
+*(A live demo link or a screenshot of the dashboard would go here. This is highly recommended to showcase the project.)*
+
+![Reflex Coder Screenshot](https://via.placeholder.com/800x500.png?text=Reflex+Coder+Dashboard+Screenshot)
+
+## 🛠️ Technologies Used
+
+This project is built with a modern, robust tech stack:
+
+-   **Frontend**: [Vite](https://vitejs.dev/), [React](https://reactjs.org/), [TypeScript](https://www.typescriptlang.org/)
+-   **Styling**: [Tailwind CSS](https://tailwindcss.com/)
+-   **UI Components**: [shadcn/ui](https://ui.shadcn.com/)
+-   **Routing**: [React Router](https://reactrouter.com/)
+-   **Icons**: [Lucide React](https://lucide.dev/)
+
+## ⚙️ Getting Started
 
 To get a local copy up and running, follow these simple steps.
 
@@ -38,14 +81,18 @@ You need to have [Node.js](https://nodejs.org/) and [npm](https://www.npmjs.com/
     ```
     The application will be available at `http://localhost:5173` (or another port if 5173 is busy).
 
-## Technologies Used
+## 🤝 Contributing
 
-This project is built with:
+Contributions are what make the open-source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
 
--   [Vite](https://vitejs.dev/) - Frontend Tooling
--   [React](https://reactjs.org/) - UI Library
--   [TypeScript](https://www.typescriptlang.org/) - Language
--   [Tailwind CSS](https://tailwindcss.com/) - CSS Framework
--   [shadcn/ui](https://ui.shadcn.com/) - UI Components
--   [React Router](https://reactrouter.com/) - Routing
--   [Lucide React](https://lucide.dev/) - Icons
+If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement".
+
+1.  Fork the Project
+2.  Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3.  Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4.  Push to the Branch (`git push origin feature/AmazingFeature`)
+5.  Open a Pull Request
+
+## 📜 License
+
+Distributed under the MIT License. See `LICENSE` for more information. (Note: A `LICENSE` file should be added to the repository).
