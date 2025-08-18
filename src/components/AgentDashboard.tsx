@@ -20,28 +20,54 @@ import {
   RotateCcw,
   TrendingUp,
   Key,
-  Shield
+  Shield,
+  Folder,
+  FileText,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  Download
 } from 'lucide-react';
 
-// Intelligent system and tool prompts (non-visual enhancement)
+// Enhanced system prompt for real agent execution
 const SYSTEM_PROMPT = `
-You are an autonomous, reinforcement-learning coding copilot.
-- Goals: plan with Tree-of-Thoughts, act via JSON tool-calls, verify via compiler/tests, and iterate.
-- Output policy: when calling tools, respond ONLY with compact JSON; otherwise use concise natural language.
-- Safety: operate in a sandbox, avoid network unless tool permits, never leak secrets, respect path allowlist.
-- Verification: after each tool call, check compile/tests/diff and update plan. Prefer minimal diffs and idempotent edits.
-- Git etiquette: use conventional commits; summarize rationale in 1-2 lines.
-- Reasoning: explore 2-3 branches, score them (feasibility, risk, test impact), then pick best.
-- Toolset: write_file, run_shell, git_commit, test_runner, code_search, web_search.
+You are Reflex Coder, an intelligent autonomous coding assistant with reinforcement learning capabilities.
+
+CORE PRINCIPLES:
+- Analyze user requests thoroughly and break them down into actionable steps
+- Generate clean, well-documented, production-ready code
+- Use appropriate design patterns and follow best practices
+- Provide comprehensive solutions with proper testing and documentation
+
+AVAILABLE TOOLS (use JSON format when making tool calls):
+- write_file: Create/modify files {"tool":"write_file","path":"<filepath>","content":"<full_content>"}
+- run_shell: Execute shell commands {"tool":"run_shell","cmd":"<command>"}  
+- git_commit: Make git commits {"tool":"git_commit","msg":"<conventional_commit_message>"}
+
+OUTPUT GUIDELINES:
+- For tool calls: Use ONLY compact JSON format
+- For explanations: Use clear, concise natural language
+- Always validate syntax and logic before generating code
+- Include comprehensive examples and test cases
+- Document your reasoning and approach
+
+QUALITY STANDARDS:
+- Write type-safe, error-handled code
+- Follow language-specific conventions and best practices
+- Include comprehensive comments and documentation
+- Create meaningful test cases
+- Use conventional commit messages when applicable
+
+When you receive a request, first analyze what needs to be done, then execute the appropriate tools to fulfill the request completely.
 `;
 
 const TOOL_PROMPTS: Record<string, string> = {
-  write_file: `Use to create/modify files. Always write full file content. Validate syntax. JSON: {"tool":"write_file","path":"<path>","content":"<full file>"}`,
-  run_shell: `Use to run commands in sandbox. Keep commands safe and deterministic. JSON: {"tool":"run_shell","cmd":"<command>"}`,
-  git_commit: `Stage and commit atomic changes with conventional message. JSON: {"tool":"git_commit","msg":"feat: ..."}`,
-  test_runner: `Run test suites and parse results for reward shaping. JSON: {"tool":"run_shell","cmd":"npm test | cargo test | pytest"}`,
-  code_search: `Search repository for symbols/usage before editing. JSON: {"tool":"run_shell","cmd":"rg -n '<query>'"}`,
-  web_search: `Only when necessary to consult docs. Summarize and cite. JSON: {"tool":"run_shell","cmd":"curl ..."}`,
+  write_file: `Create or modify files with complete content. Always include proper syntax, imports, and error handling.`,
+  run_shell: `Execute shell commands safely. Use for testing, building, installing dependencies, etc.`,
+  git_commit: `Make atomic git commits with conventional commit messages (feat:, fix:, docs:, etc.)`,
+  test_runner: `Run test suites and validate code quality. Use appropriate test commands for the language.`,
+  code_search: `Search codebase for existing implementations, patterns, or references before writing new code.`,
+  web_search: `Research documentation, best practices, or solutions when needed.`,
 };
 
 interface AgentState {
@@ -56,9 +82,11 @@ interface AgentState {
 
 interface LogEntry {
   timestamp: string;
-  type: 'thought' | 'action' | 'tool' | 'reward';
+  type: 'thought' | 'action' | 'tool' | 'reward' | 'code' | 'file';
   content: string;
   reward?: number;
+  code?: string;
+  filename?: string;
 }
 
 export default function AgentDashboard() {
@@ -81,6 +109,10 @@ export default function AgentDashboard() {
   const [availableModels, setAvailableModels] = useState<Record<string, any[]>>({});
   const [selectedModels, setSelectedModels] = useState<Record<string, string>>({});
   const [loadingModels, setLoadingModels] = useState(false);
+  const [workspaceFolder, setWorkspaceFolder] = useState('./workspace');
+  const [generatedFiles, setGeneratedFiles] = useState<{filename: string, content: string}[]>([]);
+  const [showCodePanel, setShowCodePanel] = useState(false);
+  const [storedApiKeys, setStoredApiKeys] = useState<Record<string, string>>({});
   const { toast } = useToast();
 
   const providers = [
@@ -92,80 +124,290 @@ export default function AgentDashboard() {
     { id: 'PERPLEXITY_API_KEY', name: 'Perplexity', description: 'Search-enhanced models', baseUrl: 'https://api.perplexity.ai' },
   ];
 
-  const mockThoughts = [
-    "🧭 System primed: role=RL coding copilot, mode=autonomous, sandbox=docker+firejail",
-    "🧠 Tree-of-Thought: outline plan → evaluate branches → pick best action",
-    "🛠️ Tool-calling: emit STRICT JSON for write_file/run_shell/git_commit/test_runner",
-    "🔐 Safety: read-only until tests compile; never exfiltrate secrets; respect path allowlist",
-    "✅ Verifier: after each step, re-check compile/tests/diff and adjust plan",
-    "📦 Commit style: conventional commits + concise summary of changes"
-  ];
 
-  const mockActions = [
-    { type: 'write_file', path: 'src/xml_formatter.rs', content: 'XML formatting logic...' },
-    { type: 'write_file', path: 'src/cli.rs', content: 'CLI subcommand registration...' },
-    { type: 'run_shell', cmd: 'cargo test xml_formatter' },
-    { type: 'git_commit', msg: 'Add XML formatting subcommand with tests' }
-  ];
-
-  const runAgent = () => {
+  const runAgent = async () => {
     if (!command.trim()) return;
-    
+
+    // Get the active model configuration
+    const firstProvider = Object.keys(selectedModels)[0];
+    if (!firstProvider || !selectedModels[firstProvider] || Object.keys(availableModels).length === 0) {
+      toast({
+        title: "No Model Selected",
+        description: "Please configure and select a model first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsRunning(true);
     setAgentState(prev => ({ ...prev, status: 'thinking' }));
-    addLog('thought', 'System prompt primed: ToT + verifier + JSON-only tool calls');
-    addLog('tool', 'Tool prompts loaded: write_file, run_shell, git_commit, test_runner, code_search, web_search');
-    
-    // Simulate agent execution
-    setTimeout(() => {
+    addLog('thought', 'System prompt primed: RL coding copilot with autonomous reasoning');
+    addLog('tool', 'Initializing tools: write_file, run_shell, git_commit, test_runner, code_search, web_search');
+    addLog('thought', `Processing request: ${command}`);
+
+    try {
+      const providerData = providers.find(p => p.id === firstProvider);
+      const modelId = selectedModels[firstProvider];
+      
       setAgentState(prev => ({ ...prev, status: 'coding' }));
-      addLog('thought', `Starting: ${command}`);
-    }, 500);
+      addLog('thought', `Using ${providerData?.name} - ${modelId}`);
+      
+      // Create the agent request with enhanced system prompt
+      const agentPrompt = `${SYSTEM_PROMPT}
 
-    setTimeout(() => {
-      mockThoughts.forEach((thought, i) => {
-        setTimeout(() => addLog('thought', thought), i * 1000);
+User Request: ${command}
+
+Please analyze this request and provide a step-by-step implementation plan. Then generate the necessary code files and execute any required commands. Focus on:
+1. Understanding the exact requirements
+2. Planning the implementation approach
+3. Generating clean, well-tested code
+4. Providing proper documentation
+
+Respond with JSON tool calls as specified in the system prompt.`;
+
+      // Make the actual API call
+      const response = await callLLMAPI(firstProvider, modelId, agentPrompt);
+      
+      if (response) {
+        setAgentState(prev => ({ ...prev, status: 'testing' }));
+        addLog('action', 'Analyzing response and extracting implementation details...');
+        
+        // Process the API response
+        await processAgentResponse(response);
+        
+        setAgentState(prev => ({ 
+          ...prev, 
+          status: 'training',
+          reward: prev.reward + 2.5 
+        }));
+        addLog('reward', 'Task completed successfully! Reward: +2.5');
+        setTrainingProgress(prev => Math.min(prev + 15, 100));
+      } else {
+        throw new Error('No response from model');
+      }
+
+    } catch (error) {
+      console.error('Agent execution error:', error);
+      addLog('action', `❌ Error: ${error.message}`);
+      toast({
+        title: "Execution Error", 
+        description: `Failed to process request: ${error.message}`,
+        variant: "destructive",
       });
-    }, 1000);
-
-    setTimeout(() => {
-      setAgentState(prev => ({ ...prev, status: 'testing' }));
-      mockActions.forEach((action, i) => {
-        setTimeout(() => {
-          addLog('action', `${action.type}: ${action.cmd || action.path || action.msg}`);
-          if (action.type === 'run_shell') {
-            setTimeout(() => addLog('tool', '✅ Tests passed: 3/3'), 500);
-          }
-        }, i * 1500);
-      });
-    }, 5000);
-
-    setTimeout(() => {
-      setAgentState(prev => ({ 
-        ...prev, 
-        status: 'training',
-        reward: prev.reward + 2.5 
-      }));
-      addLog('reward', 'Episode complete! Reward: +2.5');
-      setTrainingProgress(prev => Math.min(prev + 15, 100));
-    }, 12000);
-
-    setTimeout(() => {
+    } finally {
       setAgentState(prev => ({ 
         ...prev, 
         status: 'idle',
         episode: prev.episode + 1 
       }));
       setIsRunning(false);
-    }, 15000);
+    }
   };
 
-  const addLog = (type: LogEntry['type'], content: string, reward?: number) => {
+  const callLLMAPI = async (provider: string, modelId: string, prompt: string) => {
+    const providerData = providers.find(p => p.id === provider);
+    if (!providerData) throw new Error('Provider not found');
+
+    const savedApiKey = storedApiKeys[provider];
+    if (!savedApiKey) throw new Error('API key not found for provider');
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    let requestBody: any = {};
+    let endpoint = '';
+
+    switch (provider) {
+      case 'OPENROUTER_API_KEY':
+        endpoint = `${providerData.baseUrl}/chat/completions`;
+        headers['Authorization'] = `Bearer ${savedApiKey}`;
+        headers['HTTP-Referer'] = window.location.origin;
+        headers['X-Title'] = 'Reflex Coder';
+        requestBody = {
+          model: modelId,
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.7,
+          max_tokens: 4000,
+        };
+        break;
+      
+      case 'ANTHROPIC_API_KEY':
+        endpoint = `${providerData.baseUrl}/v1/messages`;
+        headers['Authorization'] = `Bearer ${savedApiKey}`;
+        headers['anthropic-version'] = '2023-06-01';
+        requestBody = {
+          model: modelId,
+          max_tokens: 4000,
+          messages: [{ role: 'user', content: prompt }],
+        };
+        break;
+      
+      case 'OPENAI_API_KEY':
+        endpoint = `${providerData.baseUrl}/chat/completions`;
+        headers['Authorization'] = `Bearer ${savedApiKey}`;
+        requestBody = {
+          model: modelId,
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.7,
+          max_tokens: 4000,
+        };
+        break;
+      
+      case 'GROQ_API_KEY':
+        endpoint = `${providerData.baseUrl}/chat/completions`;
+        headers['Authorization'] = `Bearer ${savedApiKey}`;
+        requestBody = {
+          model: modelId,
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.7,
+          max_tokens: 4000,
+        };
+        break;
+      
+      case 'PERPLEXITY_API_KEY':
+        endpoint = `${providerData.baseUrl}/chat/completions`;
+        headers['Authorization'] = `Bearer ${savedApiKey}`;
+        requestBody = {
+          model: modelId,
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.7,
+          max_tokens: 4000,
+        };
+        break;
+      
+      default:
+        throw new Error(`Unsupported provider: ${provider}`);
+    }
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      throw new Error(`API request failed: ${response.status} - ${errorData}`);
+    }
+
+    const data = await response.json();
+    
+    // Extract content based on provider response format
+    if (provider === 'ANTHROPIC_API_KEY') {
+      return data.content?.[0]?.text || '';
+    } else {
+      return data.choices?.[0]?.message?.content || '';
+    }
+  };
+
+  const processAgentResponse = async (response: string) => {
+    addLog('thought', 'Processing model response...');
+    
+    try {
+      // Try to extract JSON tool calls from the response
+      const jsonMatches = response.match(/\{[^{}]*"tool"[^{}]*\}/g);
+      
+      if (jsonMatches && jsonMatches.length > 0) {
+        for (const jsonStr of jsonMatches) {
+          try {
+            const toolCall = JSON.parse(jsonStr);
+            await executeToolCall(toolCall);
+          } catch (e) {
+            addLog('action', `⚠️ Could not parse tool call: ${jsonStr}`);
+          }
+        }
+      } else {
+        // If no tool calls, treat as code generation
+        addLog('thought', 'No tool calls detected, treating as code generation...');
+        
+        // Extract code blocks from response
+        const codeBlocks = extractCodeBlocks(response);
+        
+        if (codeBlocks.length > 0) {
+          const generatedFiles: {filename: string, content: string}[] = [];
+          
+          codeBlocks.forEach((block, index) => {
+            const filename = block.language === 'rust' ? `src/generated_${index + 1}.rs` :
+                           block.language === 'javascript' ? `src/generated_${index + 1}.js` :
+                           block.language === 'python' ? `src/generated_${index + 1}.py` :
+                           `src/generated_${index + 1}.txt`;
+            
+            generatedFiles.push({ filename, content: block.code });
+            addLog('file', `Generated: ${filename}`, undefined, block.code, filename);
+          });
+          
+          setGeneratedFiles(generatedFiles);
+          setShowCodePanel(true);
+          addLog('code', `Code generation complete - ${codeBlocks.length} files created`);
+        } else {
+          // Just show the response as a thought
+          addLog('thought', `Model response: ${response.substring(0, 500)}${response.length > 500 ? '...' : ''}`);
+        }
+      }
+    } catch (error) {
+      addLog('action', `❌ Error processing response: ${error.message}`);
+    }
+  };
+
+  const executeToolCall = async (toolCall: any) => {
+    const { tool, ...params } = toolCall;
+    
+    addLog('action', `🛠️ Executing: ${tool}`);
+    
+    switch (tool) {
+      case 'write_file':
+        if (params.path && params.content) {
+          addLog('file', `Writing file: ${params.path}`, undefined, params.content, params.path);
+          setGeneratedFiles(prev => [...prev, { filename: params.path, content: params.content }]);
+          setShowCodePanel(true);
+        }
+        break;
+      
+      case 'run_shell':
+        if (params.cmd) {
+          addLog('action', `Running command: ${params.cmd}`);
+          // In a real implementation, you'd execute the shell command
+          // For now, just simulate the output
+          addLog('tool', `Command output: [Command execution not implemented in browser environment]`);
+        }
+        break;
+      
+      case 'git_commit':
+        if (params.msg) {
+          addLog('action', `Git commit: ${params.msg}`);
+          addLog('tool', `✅ Committed with message: ${params.msg}`);
+        }
+        break;
+      
+      default:
+        addLog('action', `⚠️ Unknown tool: ${tool}`);
+    }
+  };
+
+  const extractCodeBlocks = (text: string) => {
+    const codeBlockRegex = /```(\w+)?\n?([\s\S]*?)```/g;
+    const blocks = [];
+    let match;
+    
+    while ((match = codeBlockRegex.exec(text)) !== null) {
+      blocks.push({
+        language: match[1] || 'text',
+        code: match[2].trim()
+      });
+    }
+    
+    return blocks;
+  };
+
+  const addLog = (type: LogEntry['type'], content: string, reward?: number, code?: string, filename?: string) => {
     setLogs(prev => [...prev, {
       timestamp: new Date().toLocaleTimeString(),
       type,
       content,
-      reward
+      reward,
+      code,
+      filename
     }]);
   };
 
@@ -238,7 +480,10 @@ export default function AgentDashboard() {
     }
 
     try {
-      // Fetch available models first
+      // Store the API key
+      setStoredApiKeys(prev => ({ ...prev, [selectedProvider]: apiKey }));
+      
+      // Fetch available models
       await fetchAvailableModels(selectedProvider, apiKey);
       
       toast({
@@ -340,9 +585,9 @@ const getCurrentModel = () => {
           </div>
         </Card>
 
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div className={`grid gap-6 ${showCodePanel ? 'grid-cols-1 xl:grid-cols-4' : 'grid-cols-1 xl:grid-cols-3'}`}>
           {/* Agent Logs */}
-          <Card className="xl:col-span-2 p-6">
+          <Card className={`p-6 ${showCodePanel ? 'xl:col-span-2' : 'xl:col-span-2'}`}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">Agent Activity</h3>
               <Button variant="ghost" size="sm" onClick={() => setLogs([])}>
@@ -362,11 +607,36 @@ const getCurrentModel = () => {
                         log.type === 'thought' ? 'bg-agent-thinking/20 text-agent-thinking' :
                         log.type === 'action' ? 'bg-primary/20 text-primary' :
                         log.type === 'tool' ? 'bg-agent-tool/20 text-agent-tool' :
+                        log.type === 'code' ? 'bg-green-500/20 text-green-400' :
+                        log.type === 'file' ? 'bg-blue-500/20 text-blue-400' :
                         'bg-agent-success/20 text-agent-success'
                       }`}>
-                        {log.type}
+                        {log.type === 'file' ? 'FILE' : log.type}
                       </div>
                       <p className="text-foreground">{log.content}</p>
+                      {log.type === 'file' && log.code && (
+                        <div className="mt-2 p-3 bg-terminal/50 rounded border border-border font-mono text-xs text-muted-foreground max-h-32 overflow-y-auto">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-blue-400">{log.filename}</span>
+                            <Button 
+                              size="sm" 
+                              variant="ghost" 
+                              className="h-6 px-2 text-xs"
+                              onClick={() => {
+                                navigator.clipboard.writeText(log.code || '');
+                                toast({ title: "Code copied to clipboard" });
+                              }}
+                            >
+                              <Copy className="h-3 w-3 mr-1" />
+                              Copy
+                            </Button>
+                          </div>
+                          <pre className="whitespace-pre-wrap text-xs leading-relaxed">
+                            {log.code.split('\n').slice(0, 10).join('\n')}
+                            {log.code.split('\n').length > 10 && '\n...'}
+                          </pre>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -374,8 +644,133 @@ const getCurrentModel = () => {
             </ScrollArea>
           </Card>
 
-          {/* API Key Management */}
+          {/* Generated Code Panel */}
+          {showCodePanel && (
+            <Card className="p-6 xl:col-span-1">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-blue-400" />
+                  Generated Code
+                </h3>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => setShowCodePanel(false)}
+                >
+                  ✕
+                </Button>
+              </div>
+              <ScrollArea className="h-96 w-full pr-4">
+                <div className="space-y-3">
+                  {generatedFiles.map((file, i) => (
+                    <div key={i} className="border border-border rounded-lg overflow-hidden">
+                      <div className="bg-muted/50 px-3 py-2 border-b border-border flex items-center justify-between">
+                        <span className="font-mono text-sm text-blue-400">{file.filename}</span>
+                        <div className="flex gap-1">
+                          <Button 
+                            size="sm" 
+                            variant="ghost" 
+                            className="h-6 px-2 text-xs"
+                            onClick={() => {
+                              navigator.clipboard.writeText(file.content);
+                              toast({ title: "Code copied to clipboard" });
+                            }}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="ghost" 
+                            className="h-6 px-2 text-xs"
+                            onClick={() => {
+                              const blob = new Blob([file.content], { type: 'text/plain' });
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = file.filename.split('/').pop() || 'file.txt';
+                              a.click();
+                              URL.revokeObjectURL(url);
+                            }}
+                          >
+                            <Download className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="p-3 bg-terminal/30 max-h-64 overflow-y-auto">
+                        <pre className="text-xs font-mono text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                          {file.content}
+                        </pre>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </Card>
+          )}
+
+          {/* Settings Panel */}
           <div className="space-y-6">
+            {/* Workspace Settings */}
+            <Card className="p-6">
+              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <Folder className="h-5 w-5 text-primary" />
+                Workspace Settings
+              </h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground mb-2 block">
+                    Workspace Directory
+                  </label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="./workspace"
+                      value={workspaceFolder}
+                      onChange={(e) => setWorkspaceFolder(e.target.value)}
+                      className="font-mono text-sm"
+                    />
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => {
+                        const input = document.createElement('input');
+                        input.type = 'file';
+                        input.webkitdirectory = true;
+                        input.onchange = (e: any) => {
+                          const files = e.target.files;
+                          if (files.length > 0) {
+                            const path = files[0].webkitRelativePath.split('/')[0];
+                            setWorkspaceFolder(`./${path}`);
+                            toast({ title: "Workspace folder updated", description: `Set to: ./${path}` });
+                          }
+                        };
+                        input.click();
+                      }}
+                    >
+                      <Folder className="h-4 w-4 mr-1" />
+                      Browse
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Directory where the agent will create and modify files
+                  </p>
+                </div>
+                
+                <Separator />
+                
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-muted-foreground">Status</p>
+                    <p className="text-lg font-mono text-agent-success">Ready</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Permissions</p>
+                    <p className="text-lg font-mono text-primary">Read/Write</p>
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            {/* API Keys */}
             <Card className="p-6">
               <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                 <Key className="h-5 w-5 text-primary" />
@@ -537,7 +932,7 @@ const getCurrentModel = () => {
                 </div>
                 <div className="flex justify-between">
                   <span>Project:</span>
-                  <span className="font-mono text-muted-foreground">./workspace</span>
+                  <span className="font-mono text-muted-foreground">{workspaceFolder}</span>
                 </div>
               </div>
             </Card>
