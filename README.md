@@ -1,73 +1,51 @@
-# Welcome to your Lovable project
+# Reflex Coder
 
-## Project info
+Reflex Coder is a web-based dashboard for an intelligent, reinforcement-learning-powered coding copilot. It provides a user interface to interact with an autonomous agent, monitor its activities, manage AI model API keys, and observe its training progress.
 
-**URL**: https://lovable.dev/projects/ac24d66b-d8c7-4297-b2a5-0fdf5f4ea628
+## Features
 
-## How can I edit this code?
+-   **Agent Activity Monitoring**: View a real-time log of the agent's thoughts, actions, and tool usage.
+-   **Command Execution**: Input natural language commands to the coding agent.
+-   **API Key Management**: Securely manage API keys for various AI providers like OpenRouter, Anthropic, OpenAI, and more.
+-   **Training Dashboard**: Visualize the agent's reinforcement learning progress, including success rate and average steps.
+-   **Model Selection**: Choose from a variety of available AI models for the agent to use.
 
-There are several ways of editing your application.
+## Getting Started
 
-**Use Lovable**
+To get a local copy up and running, follow these simple steps.
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/ac24d66b-d8c7-4297-b2a5-0fdf5f4ea628) and start prompting.
+### Prerequisites
 
-Changes made via Lovable will be committed automatically to this repo.
+You need to have [Node.js](https://nodejs.org/) and [npm](https://www.npmjs.com/) installed on your machine.
 
-**Use your preferred IDE**
+### Installation & Running
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+1.  **Clone the repo**
+    ```sh
+    git clone <YOUR_GIT_URL>
+    ```
+2.  **Navigate to the project directory**
+    ```sh
+    cd <YOUR_PROJECT_NAME>
+    ```
+3.  **Install NPM packages**
+    ```sh
+    npm install
+    ```
+4.  **Run the development server**
+    ```sh
+    npm run dev
+    ```
+    The application will be available at `http://localhost:5173` (or another port if 5173 is busy).
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
-
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
+## Technologies Used
 
 This project is built with:
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/ac24d66b-d8c7-4297-b2a5-0fdf5f4ea628) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+-   [Vite](https://vitejs.dev/) - Frontend Tooling
+-   [React](https://reactjs.org/) - UI Library
+-   [TypeScript](https://www.typescriptlang.org/) - Language
+-   [Tailwind CSS](https://tailwindcss.com/) - CSS Framework
+-   [shadcn/ui](https://ui.shadcn.com/) - UI Components
+-   [React Router](https://reactrouter.com/) - Routing
+-   [Lucide React](https://lucide.dev/) - Icons
