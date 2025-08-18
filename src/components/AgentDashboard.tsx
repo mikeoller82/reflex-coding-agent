@@ -585,9 +585,9 @@ const getCurrentModel = () => {
           </div>
         </Card>
 
-        <div className={`grid gap-6 ${showCodePanel ? 'grid-cols-1 xl:grid-cols-4' : 'grid-cols-1 xl:grid-cols-3'}`}>
+        <div className={`grid gap-6 ${showCodePanel ? 'grid-cols-1 lg:grid-cols-3 xl:grid-cols-4' : 'grid-cols-1 lg:grid-cols-2 xl:grid-cols-3'}`}>
           {/* Agent Logs */}
-          <Card className={`p-6 ${showCodePanel ? 'xl:col-span-2' : 'xl:col-span-2'}`}>
+          <Card className={`p-6 ${showCodePanel ? 'lg:col-span-2 xl:col-span-2' : 'lg:col-span-1 xl:col-span-2'}`}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">Agent Activity</h3>
               <Button variant="ghost" size="sm" onClick={() => setLogs([])}>
@@ -595,7 +595,7 @@ const getCurrentModel = () => {
                 Clear
               </Button>
             </div>
-            <ScrollArea className="h-96 w-full pr-4">
+            <ScrollArea className="h-[500px] w-full pr-4">
               <div className="space-y-3">
                 {logs.map((log, i) => (
                   <div key={i} className="flex items-start gap-3 text-sm">
@@ -615,7 +615,7 @@ const getCurrentModel = () => {
                       </div>
                       <p className="text-foreground">{log.content}</p>
                       {log.type === 'file' && log.code && (
-                        <div className="mt-2 p-3 bg-terminal/50 rounded border border-border font-mono text-xs text-muted-foreground max-h-32 overflow-y-auto">
+                        <div className="mt-2 p-3 bg-terminal/50 rounded border border-border font-mono text-xs text-muted-foreground max-h-48 overflow-y-auto">
                           <div className="flex items-center justify-between mb-2">
                             <span className="text-blue-400">{log.filename}</span>
                             <Button 
@@ -646,7 +646,7 @@ const getCurrentModel = () => {
 
           {/* Generated Code Panel */}
           {showCodePanel && (
-            <Card className="p-6 xl:col-span-1">
+            <Card className="p-6 lg:col-span-1 xl:col-span-1">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold flex items-center gap-2">
                   <FileText className="h-5 w-5 text-blue-400" />
@@ -660,7 +660,7 @@ const getCurrentModel = () => {
                   ✕
                 </Button>
               </div>
-              <ScrollArea className="h-96 w-full pr-4">
+              <ScrollArea className="h-[500px] w-full pr-4">
                 <div className="space-y-3">
                   {generatedFiles.map((file, i) => (
                     <div key={i} className="border border-border rounded-lg overflow-hidden">
@@ -696,7 +696,7 @@ const getCurrentModel = () => {
                           </Button>
                         </div>
                       </div>
-                      <div className="p-3 bg-terminal/30 max-h-64 overflow-y-auto">
+                      <div className="p-3 bg-terminal/30 max-h-80 overflow-y-auto">
                         <pre className="text-xs font-mono text-muted-foreground leading-relaxed whitespace-pre-wrap">
                           {file.content}
                         </pre>
