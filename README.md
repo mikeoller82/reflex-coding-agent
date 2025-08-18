@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="[https://firebasestorage.googleapis.com/v0/b/firebase-veilnet.firebasestorage.app/o/reflex-coder-logo.svg?alt=media&token=5238a68c-54ab-424b-9c31-70ef934fd49d]" alt="Reflex Coder Logo" height="300" width="150"/>
+  <img src="(https://firebasestorage.googleapis.com/v0/b/firebase-veilnet.firebasestorage.app/o/reflex-coder-logo.svg?alt=media&token=5238a68c-54ab-424b-9c31-70ef934fd49d)" alt="Reflex Coder Logo" width="150"/>
   <br/>
   <br/>
 
