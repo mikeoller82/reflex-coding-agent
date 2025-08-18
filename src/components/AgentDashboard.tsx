@@ -297,10 +297,10 @@ const getCurrentModel = () => {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              Autonomous Coding Agent
+              Reflex Coder
             </h1>
             <p className="text-muted-foreground mt-2">
-              RL-powered CLI copilot with Tree-of-Thought reasoning
+              Intelligent RL-powered coding copilot with autonomous reasoning
             </p>
           </div>
           <div className="flex items-center gap-4">
