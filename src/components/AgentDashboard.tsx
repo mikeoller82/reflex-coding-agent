@@ -78,14 +78,18 @@ export default function AgentDashboard() {
   const [trainingProgress, setTrainingProgress] = useState(0);
   const [selectedProvider, setSelectedProvider] = useState('');
   const [apiKey, setApiKey] = useState('');
+  const [availableModels, setAvailableModels] = useState<Record<string, any[]>>({});
+  const [selectedModels, setSelectedModels] = useState<Record<string, string>>({});
+  const [loadingModels, setLoadingModels] = useState(false);
   const { toast } = useToast();
 
   const providers = [
-    { id: 'OPENROUTER_API_KEY', name: 'OpenRouter', description: 'Access to multiple models' },
-    { id: 'ANTHROPIC_API_KEY', name: 'Anthropic', description: 'Claude models' },
-    { id: 'OPENAI_API_KEY', name: 'OpenAI', description: 'GPT models' },
-    { id: 'HUGGINGFACE_API_KEY', name: 'HuggingFace', description: 'Open-source models' },
-    { id: 'GROQ_API_KEY', name: 'Groq', description: 'Fast inference' },
+    { id: 'OPENROUTER_API_KEY', name: 'OpenRouter', description: 'Access to multiple models', baseUrl: 'https://openrouter.ai/api/v1' },
+    { id: 'ANTHROPIC_API_KEY', name: 'Anthropic', description: 'Claude models', baseUrl: 'https://api.anthropic.com' },
+    { id: 'OPENAI_API_KEY', name: 'OpenAI', description: 'GPT models', baseUrl: 'https://api.openai.com/v1' },
+    { id: 'HUGGINGFACE_API_KEY', name: 'HuggingFace', description: 'Open-source models', baseUrl: 'https://api-inference.huggingface.co' },
+    { id: 'GROQ_API_KEY', name: 'Groq', description: 'Fast inference', baseUrl: 'https://api.groq.com/openai/v1' },
+    { id: 'PERPLEXITY_API_KEY', name: 'Perplexity', description: 'Search-enhanced models', baseUrl: 'https://api.perplexity.ai' },
   ];
 
   const mockThoughts = [
@@ -165,6 +169,64 @@ export default function AgentDashboard() {
     }]);
   };
 
+  const fetchAvailableModels = async (provider: string, key: string) => {
+    setLoadingModels(true);
+    try {
+      const providerData = providers.find(p => p.id === provider);
+      if (!providerData) return;
+
+      let models: any[] = [];
+      
+      if (provider === 'OPENROUTER_API_KEY') {
+        const response = await fetch('https://openrouter.ai/api/v1/models', {
+          headers: { 'Authorization': `Bearer ${key}` }
+        });
+        const data = await response.json();
+        models = data.data?.map((m: any) => ({ id: m.id, name: m.name || m.id })) || [];
+      } else if (provider === 'OPENAI_API_KEY') {
+        // OpenAI known models (API doesn't expose models endpoint publicly)
+        models = [
+          { id: 'gpt-4', name: 'GPT-4' },
+          { id: 'gpt-4-turbo', name: 'GPT-4 Turbo' },
+          { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo' },
+        ];
+      } else if (provider === 'ANTHROPIC_API_KEY') {
+        // Anthropic known models
+        models = [
+          { id: 'claude-3-opus-20240229', name: 'Claude 3 Opus' },
+          { id: 'claude-3-sonnet-20240229', name: 'Claude 3 Sonnet' },
+          { id: 'claude-3-haiku-20240307', name: 'Claude 3 Haiku' },
+        ];
+      } else if (provider === 'GROQ_API_KEY') {
+        const response = await fetch('https://api.groq.com/openai/v1/models', {
+          headers: { 'Authorization': `Bearer ${key}` }
+        });
+        const data = await response.json();
+        models = data.data?.map((m: any) => ({ id: m.id, name: m.id })) || [];
+      } else if (provider === 'PERPLEXITY_API_KEY') {
+        // Perplexity known models
+        models = [
+          { id: 'llama-3.1-sonar-small-128k-online', name: 'Llama 3.1 Sonar Small (8B)' },
+          { id: 'llama-3.1-sonar-large-128k-online', name: 'Llama 3.1 Sonar Large (70B)' },
+          { id: 'llama-3.1-sonar-huge-128k-online', name: 'Llama 3.1 Sonar Huge (405B)' },
+        ];
+      }
+
+      setAvailableModels(prev => ({ ...prev, [provider]: models }));
+      if (models.length > 0) {
+        setSelectedModels(prev => ({ ...prev, [provider]: models[0].id }));
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to fetch available models.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingModels(false);
+    }
+  };
+
   const handleSaveApiKey = async () => {
     if (!selectedProvider || !apiKey.trim()) {
       toast({
@@ -176,11 +238,12 @@ export default function AgentDashboard() {
     }
 
     try {
-      // Note: In a real implementation, this would use Supabase Edge Functions
-      // to securely store the API key using the secrets system
+      // Fetch available models first
+      await fetchAvailableModels(selectedProvider, apiKey);
+      
       toast({
         title: "API Key Saved",
-        description: `${providers.find(p => p.id === selectedProvider)?.name} API key will be stored securely.`,
+        description: `${providers.find(p => p.id === selectedProvider)?.name} API key saved and models loaded.`,
       });
       setApiKey('');
       setSelectedProvider('');
@@ -211,9 +274,21 @@ export default function AgentDashboard() {
       case 'testing': return 'border-agent-tool/50 bg-agent-tool/10';
       case 'committing': return 'border-agent-success/50 bg-agent-success/10';
       case 'training': return 'border-yellow-400/50 bg-yellow-400/10';
-      default: return 'border-border bg-card';
-    }
-  };
+    default: return 'border-border bg-card';
+  }
+};
+
+const getCurrentModel = () => {
+  // Get the first available selected model
+  const firstProvider = Object.keys(selectedModels)[0];
+  if (firstProvider && selectedModels[firstProvider]) {
+    const providerName = providers.find(p => p.id === firstProvider)?.name;
+    const modelId = selectedModels[firstProvider];
+    const model = availableModels[firstProvider]?.find(m => m.id === modelId);
+    return `${model?.name || modelId} (${providerName})`;
+  }
+  return 'claude-sonnet-4';
+};
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -336,13 +411,47 @@ export default function AgentDashboard() {
                   />
                   <Button 
                     onClick={handleSaveApiKey}
-                    disabled={!selectedProvider || !apiKey.trim()}
+                    disabled={!selectedProvider || !apiKey.trim() || loadingModels}
                     className="w-full"
                     size="sm"
                   >
-                    Save API Key
+                    {loadingModels ? 'Loading Models...' : 'Save API Key'}
                   </Button>
                 </div>
+                
+                {/* Model Selectors */}
+                {Object.keys(availableModels).length > 0 && (
+                  <div className="space-y-3">
+                    <Separator />
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-medium">Model Selection</h4>
+                      {Object.entries(availableModels).map(([providerId, models]) => {
+                        const provider = providers.find(p => p.id === providerId);
+                        return (
+                          <div key={providerId} className="space-y-2">
+                            <label className="text-xs text-muted-foreground">{provider?.name}</label>
+                            <Select 
+                              value={selectedModels[providerId] || ''} 
+                              onValueChange={(value) => setSelectedModels(prev => ({ ...prev, [providerId]: value }))}
+                            >
+                              <SelectTrigger className="h-8 text-xs bg-background border-border">
+                                <SelectValue placeholder="Select model" />
+                              </SelectTrigger>
+                              <SelectContent className="bg-background border-border shadow-lg z-50">
+                                {models.map((model) => (
+                                  <SelectItem key={model.id} value={model.id} className="text-xs">
+                                    {model.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                
                 <Separator />
                 <div className="text-xs text-muted-foreground">
                   <p>• Keys are never stored in frontend code</p>
@@ -412,7 +521,7 @@ export default function AgentDashboard() {
               <div className="space-y-3 text-sm">
                 <div className="flex justify-between">
                   <span>Model:</span>
-                  <span className="font-mono text-primary">claude-sonnet-4</span>
+                  <span className="font-mono text-primary text-xs">{getCurrentModel()}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Context:</span>
