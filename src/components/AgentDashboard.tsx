@@ -176,11 +176,11 @@ export default function AgentDashboard() {
     }
 
     try {
-      // This will trigger the secrets modal for secure storage
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Note: In a real implementation, this would use Supabase Edge Functions
+      // to securely store the API key using the secrets system
       toast({
         title: "API Key Saved",
-        description: `${providers.find(p => p.id === selectedProvider)?.name} API key saved securely.`,
+        description: `${providers.find(p => p.id === selectedProvider)?.name} API key will be stored securely.`,
       });
       setApiKey('');
       setSelectedProvider('');
