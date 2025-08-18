@@ -38,9 +38,6 @@ In an era where AI is becoming a core part of the development workflow, transpar
 -   **Model Selection**: Choose from a variety of available AI models for the agent to use.
 
 ## 📸 Live Demo / Screenshot
-
-*(A live demo link or a screenshot of the dashboard would go here. This is highly recommended to showcase the project.)*
-
 ![Reflex Coder Screenshot](https://firebasestorage.googleapis.com/v0/b/firebase-veilnet.firebasestorage.app/o/screenshot_region_2025-08-18_17-28-58.png?alt=media&token=b5bff7f0-ea30-4e16-be7b-32388dde7d68)
 
 ## 🛠️ Technologies Used
