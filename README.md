@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="public/placeholder.svg" alt="Reflex Coder Logo" width="150"/>
+  <img src="https://firebasestorage.googleapis.com/v0/b/firebase-veilnet.firebasestorage.app/o/reflex-coder-logo.svg?alt=media&token=5238a68c-54ab-424b-9c31-70ef934fd49d" alt="Reflex Coder Logo" width="150"/>
   <br/>
   <br/>
 
@@ -41,7 +41,7 @@ In an era where AI is becoming a core part of the development workflow, transpar
 
 *(A live demo link or a screenshot of the dashboard would go here. This is highly recommended to showcase the project.)*
 
-![Reflex Coder Screenshot](https://via.placeholder.com/800x500.png?text=Reflex+Coder+Dashboard+Screenshot)
+![Reflex Coder Screenshot](https://firebasestorage.googleapis.com/v0/b/firebase-veilnet.firebasestorage.app/o/screenshot_region_2025-08-18_17-28-58.png?alt=media&token=b5bff7f0-ea30-4e16-be7b-32388dde7d68)
 
 ## 🛠️ Technologies Used
 
