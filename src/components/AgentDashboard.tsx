@@ -19,6 +19,27 @@ import {
   TrendingUp
 } from 'lucide-react';
 
+// Intelligent system and tool prompts (non-visual enhancement)
+const SYSTEM_PROMPT = `
+You are an autonomous, reinforcement-learning coding copilot.
+- Goals: plan with Tree-of-Thoughts, act via JSON tool-calls, verify via compiler/tests, and iterate.
+- Output policy: when calling tools, respond ONLY with compact JSON; otherwise use concise natural language.
+- Safety: operate in a sandbox, avoid network unless tool permits, never leak secrets, respect path allowlist.
+- Verification: after each tool call, check compile/tests/diff and update plan. Prefer minimal diffs and idempotent edits.
+- Git etiquette: use conventional commits; summarize rationale in 1-2 lines.
+- Reasoning: explore 2-3 branches, score them (feasibility, risk, test impact), then pick best.
+- Toolset: write_file, run_shell, git_commit, test_runner, code_search, web_search.
+`;
+
+const TOOL_PROMPTS: Record<string, string> = {
+  write_file: `Use to create/modify files. Always write full file content. Validate syntax. JSON: {"tool":"write_file","path":"<path>","content":"<full file>"}`,
+  run_shell: `Use to run commands in sandbox. Keep commands safe and deterministic. JSON: {"tool":"run_shell","cmd":"<command>"}`,
+  git_commit: `Stage and commit atomic changes with conventional message. JSON: {"tool":"git_commit","msg":"feat: ..."}`,
+  test_runner: `Run test suites and parse results for reward shaping. JSON: {"tool":"run_shell","cmd":"npm test | cargo test | pytest"}`,
+  code_search: `Search repository for symbols/usage before editing. JSON: {"tool":"run_shell","cmd":"rg -n '<query>'"}`,
+  web_search: `Only when necessary to consult docs. Summarize and cite. JSON: {"tool":"run_shell","cmd":"curl ..."}`,
+};
+
 interface AgentState {
   status: 'idle' | 'thinking' | 'coding' | 'testing' | 'committing' | 'training';
   thoughts: string[];
@@ -53,10 +74,12 @@ export default function AgentDashboard() {
   const [trainingProgress, setTrainingProgress] = useState(0);
 
   const mockThoughts = [
-    "🤔 Analyzing the request: 'add rust sub-cmd that formats XML and tests it'",
-    "📋 Breaking down into steps: 1) Create XML formatter 2) Add CLI subcommand 3) Write tests",
-    "🔍 Searching codebase for existing CLI structure and XML handling patterns",
-    "💡 Planning tool sequence: write_file → run_shell → git_commit"
+    "🧭 System primed: role=RL coding copilot, mode=autonomous, sandbox=docker+firejail",
+    "🧠 Tree-of-Thought: outline plan → evaluate branches → pick best action",
+    "🛠️ Tool-calling: emit STRICT JSON for write_file/run_shell/git_commit/test_runner",
+    "🔐 Safety: read-only until tests compile; never exfiltrate secrets; respect path allowlist",
+    "✅ Verifier: after each step, re-check compile/tests/diff and adjust plan",
+    "📦 Commit style: conventional commits + concise summary of changes"
   ];
 
   const mockActions = [
@@ -71,6 +94,8 @@ export default function AgentDashboard() {
     
     setIsRunning(true);
     setAgentState(prev => ({ ...prev, status: 'thinking' }));
+    addLog('thought', 'System prompt primed: ToT + verifier + JSON-only tool calls');
+    addLog('tool', 'Tool prompts loaded: write_file, run_shell, git_commit, test_runner, code_search, web_search');
     
     // Simulate agent execution
     setTimeout(() => {
