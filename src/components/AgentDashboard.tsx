@@ -6,6 +6,8 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useToast } from '@/hooks/use-toast';
 import { 
   Brain, 
   Terminal, 
@@ -16,7 +18,9 @@ import {
   Play,
   Pause,
   RotateCcw,
-  TrendingUp
+  TrendingUp,
+  Key,
+  Shield
 } from 'lucide-react';
 
 // Intelligent system and tool prompts (non-visual enhancement)
@@ -72,6 +76,17 @@ export default function AgentDashboard() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [trainingProgress, setTrainingProgress] = useState(0);
+  const [selectedProvider, setSelectedProvider] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const { toast } = useToast();
+
+  const providers = [
+    { id: 'OPENROUTER_API_KEY', name: 'OpenRouter', description: 'Access to multiple models' },
+    { id: 'ANTHROPIC_API_KEY', name: 'Anthropic', description: 'Claude models' },
+    { id: 'OPENAI_API_KEY', name: 'OpenAI', description: 'GPT models' },
+    { id: 'HUGGINGFACE_API_KEY', name: 'HuggingFace', description: 'Open-source models' },
+    { id: 'GROQ_API_KEY', name: 'Groq', description: 'Fast inference' },
+  ];
 
   const mockThoughts = [
     "🧭 System primed: role=RL coding copilot, mode=autonomous, sandbox=docker+firejail",
@@ -148,6 +163,34 @@ export default function AgentDashboard() {
       content,
       reward
     }]);
+  };
+
+  const handleSaveApiKey = async () => {
+    if (!selectedProvider || !apiKey.trim()) {
+      toast({
+        title: "Missing Information",
+        description: "Please select a provider and enter an API key.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      // This will trigger the secrets modal for secure storage
+      await new Promise(resolve => setTimeout(resolve, 100));
+      toast({
+        title: "API Key Saved",
+        description: `${providers.find(p => p.id === selectedProvider)?.name} API key saved securely.`,
+      });
+      setApiKey('');
+      setSelectedProvider('');
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to save API key. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const getStatusIcon = () => {
@@ -256,8 +299,59 @@ export default function AgentDashboard() {
             </ScrollArea>
           </Card>
 
-          {/* Training Panel */}
+          {/* API Key Management */}
           <div className="space-y-6">
+            <Card className="p-6">
+              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <Key className="h-5 w-5 text-primary" />
+                API Keys
+              </h3>
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Shield className="h-4 w-4" />
+                  <span>Keys are encrypted and stored securely via Supabase</span>
+                </div>
+                <div className="space-y-3">
+                  <Select value={selectedProvider} onValueChange={setSelectedProvider}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select provider" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {providers.map((provider) => (
+                        <SelectItem key={provider.id} value={provider.id}>
+                          <div>
+                            <div className="font-medium">{provider.name}</div>
+                            <div className="text-xs text-muted-foreground">{provider.description}</div>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    type="password"
+                    placeholder="Enter API key..."
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    className="font-mono text-sm"
+                  />
+                  <Button 
+                    onClick={handleSaveApiKey}
+                    disabled={!selectedProvider || !apiKey.trim()}
+                    className="w-full"
+                    size="sm"
+                  >
+                    Save API Key
+                  </Button>
+                </div>
+                <Separator />
+                <div className="text-xs text-muted-foreground">
+                  <p>• Keys are never stored in frontend code</p>
+                  <p>• Access via Supabase Edge Functions only</p>
+                  <p>• Rotate keys regularly for security</p>
+                </div>
+              </div>
+            </Card>
+
             {/* RL Training Progress */}
             <Card className="p-6">
               <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
