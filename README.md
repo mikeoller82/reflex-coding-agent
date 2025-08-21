@@ -88,10 +88,15 @@ Reflex Coder now generates and persists code directly from natural language inst
 
 Server endpoints exposed by the dev server (used by the agent):
 - `POST /api/files/write` with `{ path, content, overwrite, cwd? }` to write files. If `cwd` is provided, `path` is resolved relative to that directory.
+- `POST /api/files/read` with `{ path, cwd? }` to read file contents.
+- `POST /api/files/list` with `{ cwd?, path?: '.', maxDepth?: number }` to list files/dirs relative to `cwd`.
+- `POST /api/files/delete` with `{ path, cwd?, recursive? }` to delete files/dirs.
+- `POST /api/files/move` with `{ from, to, cwd?, overwrite? }` to move/rename.
+- `POST /api/files/mkdir` with `{ path, cwd?, recursive? }` to create directories.
 - `POST /api/shell` with `{ cmd, cwd? }` to execute shell commands in the optional working directory and return output.
 - `POST /api/git/commit` with `{ msg, cwd? }` to commit changes in the optional working directory.
 
-To use, enter a clear instruction in the dashboard (e.g., “add a React hook for debounced search with tests”), select a model, and Run. The agent will generate files and persist them to your repo.
+To use, enter a clear instruction in the dashboard (e.g., “add a React hook for debounced search with tests”), select a model, and Run. Set the Workspace Directory to a relative or absolute path; the agent executes all operations with `cwd` set to that directory.
 
 ## 🤝 Contributing
 

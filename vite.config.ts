@@ -34,6 +34,128 @@ function registerAgentAPIs(server: any) {
     }
   });
 
+  // Read file
+  server.middlewares.use('/api/files/read', async (req: any, res: any) => {
+    if (req.method !== 'POST') { res.statusCode = 405; return res.end('Method Not Allowed'); }
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    try {
+      const { path: targetPath, cwd } = JSON.parse(body || '{}');
+      if (!targetPath) throw new Error('path required');
+      const base = cwd ? path.resolve(process.cwd(), cwd) : process.cwd();
+      const full = path.resolve(base, targetPath);
+      const data = await fs.readFile(full, 'utf-8');
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ success: true, path: targetPath, content: data }));
+    } catch (e: any) {
+      res.statusCode = 400;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ success: false, error: e.message }));
+    }
+  });
+
+  // List files (recursive)
+  server.middlewares.use('/api/files/list', async (req: any, res: any) => {
+    if (req.method !== 'POST') { res.statusCode = 405; return res.end('Method Not Allowed'); }
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    try {
+      const { cwd, path: rel = '.', maxDepth = 3 } = JSON.parse(body || '{}');
+      const base = cwd ? path.resolve(process.cwd(), cwd) : process.cwd();
+      const root = path.resolve(base, rel);
+
+      async function walk(dir: string, depth: number): Promise<any[]> {
+        if (depth < 0) return [] as any[];
+        const entries = await fs.readdir(dir, { withFileTypes: true });
+        const results: any[] = [];
+        for (const ent of entries) {
+          const full = path.join(dir, ent.name);
+          const relPath = path.relative(base, full);
+          if (ent.isDirectory()) {
+            results.push({ type: 'dir', path: relPath });
+            results.push(...await walk(full, depth - 1));
+          } else if (ent.isFile()) {
+            results.push({ type: 'file', path: relPath });
+          }
+        }
+        return results;
+      }
+
+      const tree = await walk(root, maxDepth);
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ success: true, files: tree }));
+    } catch (e: any) {
+      res.statusCode = 400;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ success: false, error: e.message }));
+    }
+  });
+
+  // Delete file or directory
+  server.middlewares.use('/api/files/delete', async (req: any, res: any) => {
+    if (req.method !== 'POST') { res.statusCode = 405; return res.end('Method Not Allowed'); }
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    try {
+      const { path: targetPath, cwd, recursive = true } = JSON.parse(body || '{}');
+      if (!targetPath) throw new Error('path required');
+      const base = cwd ? path.resolve(process.cwd(), cwd) : process.cwd();
+      const full = path.resolve(base, targetPath);
+      await fs.rm(full, { recursive, force: true });
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ success: true }));
+    } catch (e: any) {
+      res.statusCode = 400;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ success: false, error: e.message }));
+    }
+  });
+
+  // Move/rename
+  server.middlewares.use('/api/files/move', async (req: any, res: any) => {
+    if (req.method !== 'POST') { res.statusCode = 405; return res.end('Method Not Allowed'); }
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    try {
+      const { from, to, cwd, overwrite = true } = JSON.parse(body || '{}');
+      if (!from || !to) throw new Error('from and to required');
+      const base = cwd ? path.resolve(process.cwd(), cwd) : process.cwd();
+      const src = path.resolve(base, from);
+      const dest = path.resolve(base, to);
+      await fs.mkdir(path.dirname(dest), { recursive: true });
+      if (overwrite) {
+        try { await fs.rm(dest, { force: true, recursive: false }); } catch {}
+      }
+      await fs.rename(src, dest);
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ success: true }));
+    } catch (e: any) {
+      res.statusCode = 400;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ success: false, error: e.message }));
+    }
+  });
+
+  // Make directory
+  server.middlewares.use('/api/files/mkdir', async (req: any, res: any) => {
+    if (req.method !== 'POST') { res.statusCode = 405; return res.end('Method Not Allowed'); }
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    try {
+      const { path: targetPath, cwd, recursive = true } = JSON.parse(body || '{}');
+      if (!targetPath) throw new Error('path required');
+      const base = cwd ? path.resolve(process.cwd(), cwd) : process.cwd();
+      const full = path.resolve(base, targetPath);
+      await fs.mkdir(full, { recursive });
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ success: true }));
+    } catch (e: any) {
+      res.statusCode = 400;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ success: false, error: e.message }));
+    }
+  });
+
   // Run shell command
   server.middlewares.use('/api/shell', async (req: any, res: any) => {
     if (req.method !== 'POST') { res.statusCode = 405; return res.end('Method Not Allowed'); }

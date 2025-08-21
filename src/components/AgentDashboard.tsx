@@ -116,6 +116,15 @@ export default function AgentDashboard() {
   const [storedApiKeys, setStoredApiKeys] = useState<Record<string, string>>({});
   const { toast } = useToast();
 
+  // Persist workspace folder across sessions and allow absolute paths
+  useEffect(() => {
+    const saved = localStorage.getItem('reflex.workspaceFolder');
+    if (saved) setWorkspaceFolder(saved);
+  }, []);
+  useEffect(() => {
+    if (workspaceFolder) localStorage.setItem('reflex.workspaceFolder', workspaceFolder);
+  }, [workspaceFolder]);
+
   const providers = [
     { id: 'OPENROUTER_API_KEY', name: 'OpenRouter', description: 'Access to multiple models', baseUrl: 'https://openrouter.ai/api/v1' },
     { id: 'ANTHROPIC_API_KEY', name: 'Anthropic', description: 'Claude models', baseUrl: 'https://api.anthropic.com' },
@@ -381,6 +390,90 @@ Respond with JSON tool calls as specified in the system prompt.`;
             setShowCodePanel(true);
           } catch (e: any) {
             addLog('action', `❌ write_file failed: ${e.message}`);
+          }
+        }
+        break;
+
+      case 'read_file':
+        if (params.path) {
+          try {
+            const res = await fetch('/api/files/read', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ path: params.path, cwd: workspaceFolder })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.error || 'read failed');
+            addLog('file', `Read file: ${params.path}`, undefined, data.content, params.path);
+          } catch (e: any) {
+            addLog('action', `❌ read_file failed: ${e.message}`);
+          }
+        }
+        break;
+
+      case 'list_files':
+        try {
+          const res = await fetch('/api/files/list', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cwd: workspaceFolder, path: params.path || '.', maxDepth: params.maxDepth || 2 })
+          });
+          const data = await res.json();
+          if (!res.ok || !data.success) throw new Error(data.error || 'list failed');
+          const listing = (data.files || []).map((f: any) => `${f.type}: ${f.path}`).join('\n');
+          addLog('tool', `Listed files (base: ${workspaceFolder}):\n${listing}`);
+        } catch (e: any) {
+          addLog('action', `❌ list_files failed: ${e.message}`);
+        }
+        break;
+
+      case 'delete_path':
+        if (params.path) {
+          try {
+            const res = await fetch('/api/files/delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ path: params.path, cwd: workspaceFolder, recursive: params.recursive ?? true })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.error || 'delete failed');
+            addLog('action', `🗑️ Deleted: ${params.path}`);
+          } catch (e: any) {
+            addLog('action', `❌ delete_path failed: ${e.message}`);
+          }
+        }
+        break;
+
+      case 'move_path':
+        if (params.from && params.to) {
+          try {
+            const res = await fetch('/api/files/move', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ from: params.from, to: params.to, cwd: workspaceFolder, overwrite: params.overwrite ?? true })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.error || 'move failed');
+            addLog('action', `📦 Moved: ${params.from} -> ${params.to}`);
+          } catch (e: any) {
+            addLog('action', `❌ move_path failed: ${e.message}`);
+          }
+        }
+        break;
+
+      case 'make_dir':
+        if (params.path) {
+          try {
+            const res = await fetch('/api/files/mkdir', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ path: params.path, cwd: workspaceFolder, recursive: params.recursive ?? true })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.error || 'mkdir failed');
+            addLog('action', `📁 Created directory: ${params.path}`);
+          } catch (e: any) {
+            addLog('action', `❌ make_dir failed: ${e.message}`);
           }
         }
         break;
@@ -795,7 +888,7 @@ const getCurrentModel = () => {
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">
-                    Directory where the agent will create and modify files
+                    Absolute or relative path. Shell, git, and file operations run with cwd = this path.
                   </p>
                 </div>
                 
