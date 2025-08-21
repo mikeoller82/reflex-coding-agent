@@ -15,9 +15,10 @@ function registerAgentAPIs(server: any) {
     let body = '';
     for await (const chunk of req) body += chunk;
     try {
-      const { path: targetPath, content, overwrite } = JSON.parse(body || '{}');
+      const { path: targetPath, content, overwrite, cwd } = JSON.parse(body || '{}');
       if (!targetPath || typeof content !== 'string') throw new Error('path and content required');
-      const full = path.resolve(process.cwd(), targetPath);
+      const base = cwd ? path.resolve(process.cwd(), cwd) : process.cwd();
+      const full = path.resolve(base, targetPath);
       try {
         await fs.access(full);
         if (!overwrite) throw new Error(`File exists: ${targetPath}`);
@@ -57,10 +58,11 @@ function registerAgentAPIs(server: any) {
     let body = '';
     for await (const chunk of req) body += chunk;
     try {
-      const { msg } = JSON.parse(body || '{}');
+      const { msg, cwd } = JSON.parse(body || '{}');
       if (!msg) throw new Error('msg required');
-      await exec('git add -A');
-      await exec(`git commit -m ${JSON.stringify(msg)}`);
+      const execOpts = { cwd: cwd ? path.resolve(process.cwd(), cwd) : process.cwd(), env: process.env, maxBuffer: 10 * 1024 * 1024 } as any;
+      await exec('git add -A', execOpts);
+      await exec(`git commit -m ${JSON.stringify(msg)}`, execOpts);
       res.setHeader('Content-Type', 'application/json');
       res.end(JSON.stringify({ success: true, commit: msg }));
     } catch (e: any) {

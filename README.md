@@ -87,9 +87,9 @@ Reflex Coder now generates and persists code directly from natural language inst
 - Shows all generated files in the “Generated Code” panel for quick copy/download.
 
 Server endpoints exposed by the dev server (used by the agent):
-- `POST /api/files/write` with `{ path, content, overwrite }` to write files.
-- `POST /api/shell` with `{ cmd }` to execute shell commands and return output.
-- `POST /api/git/commit` with `{ msg }` to commit changes.
+- `POST /api/files/write` with `{ path, content, overwrite, cwd? }` to write files. If `cwd` is provided, `path` is resolved relative to that directory.
+- `POST /api/shell` with `{ cmd, cwd? }` to execute shell commands in the optional working directory and return output.
+- `POST /api/git/commit` with `{ msg, cwd? }` to commit changes in the optional working directory.
 
 To use, enter a clear instruction in the dashboard (e.g., “add a React hook for debounced search with tests”), select a model, and Run. The agent will generate files and persist them to your repo.
 

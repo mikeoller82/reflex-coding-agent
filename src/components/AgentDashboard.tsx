@@ -372,7 +372,7 @@ Respond with JSON tool calls as specified in the system prompt.`;
             const res = await fetch('/api/files/write', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ path: params.path, content: params.content, overwrite: true })
+              body: JSON.stringify({ path: params.path, content: params.content, overwrite: true, cwd: workspaceFolder })
             });
             const data = await res.json();
             if (!res.ok || !data.success) throw new Error(data.error || 'write failed');
@@ -392,7 +392,7 @@ Respond with JSON tool calls as specified in the system prompt.`;
             const res = await fetch('/api/shell', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ cmd: params.cmd })
+              body: JSON.stringify({ cmd: params.cmd, cwd: workspaceFolder })
             });
             const data = await res.json();
             if (!res.ok || !data.success) throw new Error(data.error || 'shell failed');
@@ -410,7 +410,7 @@ Respond with JSON tool calls as specified in the system prompt.`;
             const res = await fetch('/api/git/commit', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ msg: params.msg })
+              body: JSON.stringify({ msg: params.msg, cwd: workspaceFolder })
             });
             const data = await res.json();
             if (!res.ok || !data.success) throw new Error(data.error || 'commit failed');
