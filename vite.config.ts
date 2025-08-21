@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
+import os from 'os';
 import { componentTagger } from "lovable-tagger";
 import fs from 'fs/promises';
 import { exec as execCb } from 'child_process';
@@ -8,6 +9,17 @@ import { promisify } from 'util';
 const exec = promisify(execCb);
 
 // Lightweight API for file IO, shell, and git operations used by the agent
+function resolveBaseCwd(cwd?: string) {
+  const base = process.cwd();
+  if (!cwd || typeof cwd !== 'string') return base;
+  // Expand ~ to the user's home directory
+  let candidate = cwd.trim();
+  if (candidate === '~') candidate = os.homedir();
+  else if (candidate.startsWith('~/')) candidate = path.join(os.homedir(), candidate.slice(2));
+  // If absolute, path.resolve will return as-is; if relative, resolve against process cwd
+  return path.resolve(base, candidate);
+}
+
 function registerAgentAPIs(server: any) {
   // Write file
   server.middlewares.use('/api/files/write', async (req: any, res: any) => {
@@ -17,7 +29,7 @@ function registerAgentAPIs(server: any) {
     try {
       const { path: targetPath, content, overwrite, cwd } = JSON.parse(body || '{}');
       if (!targetPath || typeof content !== 'string') throw new Error('path and content required');
-      const base = cwd ? path.resolve(process.cwd(), cwd) : process.cwd();
+      const base = resolveBaseCwd(cwd);
       const full = path.resolve(base, targetPath);
       try {
         await fs.access(full);
@@ -42,7 +54,7 @@ function registerAgentAPIs(server: any) {
     try {
       const { path: targetPath, cwd } = JSON.parse(body || '{}');
       if (!targetPath) throw new Error('path required');
-      const base = cwd ? path.resolve(process.cwd(), cwd) : process.cwd();
+      const base = resolveBaseCwd(cwd);
       const full = path.resolve(base, targetPath);
       const data = await fs.readFile(full, 'utf-8');
       res.setHeader('Content-Type', 'application/json');
@@ -61,7 +73,7 @@ function registerAgentAPIs(server: any) {
     for await (const chunk of req) body += chunk;
     try {
       const { cwd, path: rel = '.', maxDepth = 3 } = JSON.parse(body || '{}');
-      const base = cwd ? path.resolve(process.cwd(), cwd) : process.cwd();
+      const base = resolveBaseCwd(cwd);
       const root = path.resolve(base, rel);
 
       async function walk(dir: string, depth: number): Promise<any[]> {
@@ -99,7 +111,7 @@ function registerAgentAPIs(server: any) {
     try {
       const { path: targetPath, cwd, recursive = true } = JSON.parse(body || '{}');
       if (!targetPath) throw new Error('path required');
-      const base = cwd ? path.resolve(process.cwd(), cwd) : process.cwd();
+      const base = resolveBaseCwd(cwd);
       const full = path.resolve(base, targetPath);
       await fs.rm(full, { recursive, force: true });
       res.setHeader('Content-Type', 'application/json');
@@ -119,7 +131,7 @@ function registerAgentAPIs(server: any) {
     try {
       const { from, to, cwd, overwrite = true } = JSON.parse(body || '{}');
       if (!from || !to) throw new Error('from and to required');
-      const base = cwd ? path.resolve(process.cwd(), cwd) : process.cwd();
+      const base = resolveBaseCwd(cwd);
       const src = path.resolve(base, from);
       const dest = path.resolve(base, to);
       await fs.mkdir(path.dirname(dest), { recursive: true });
@@ -144,7 +156,7 @@ function registerAgentAPIs(server: any) {
     try {
       const { path: targetPath, cwd, recursive = true } = JSON.parse(body || '{}');
       if (!targetPath) throw new Error('path required');
-      const base = cwd ? path.resolve(process.cwd(), cwd) : process.cwd();
+      const base = resolveBaseCwd(cwd);
       const full = path.resolve(base, targetPath);
       await fs.mkdir(full, { recursive });
       res.setHeader('Content-Type', 'application/json');
@@ -164,7 +176,7 @@ function registerAgentAPIs(server: any) {
     try {
       const { cmd, cwd } = JSON.parse(body || '{}');
       if (!cmd || typeof cmd !== 'string') throw new Error('cmd required');
-      const { stdout, stderr } = await exec(cmd, { cwd: cwd ? path.resolve(process.cwd(), cwd) : process.cwd(), env: process.env, maxBuffer: 10 * 1024 * 1024 });
+      const { stdout, stderr } = await exec(cmd, { cwd: resolveBaseCwd(cwd), env: process.env, maxBuffer: 10 * 1024 * 1024 });
       res.setHeader('Content-Type', 'application/json');
       res.end(JSON.stringify({ success: true, stdout, stderr }));
     } catch (e: any) {
@@ -182,7 +194,7 @@ function registerAgentAPIs(server: any) {
     try {
       const { msg, cwd } = JSON.parse(body || '{}');
       if (!msg) throw new Error('msg required');
-      const execOpts = { cwd: cwd ? path.resolve(process.cwd(), cwd) : process.cwd(), env: process.env, maxBuffer: 10 * 1024 * 1024 } as any;
+      const execOpts = { cwd: resolveBaseCwd(cwd), env: process.env, maxBuffer: 10 * 1024 * 1024 } as any;
       await exec('git add -A', execOpts);
       await exec(`git commit -m ${JSON.stringify(msg)}`, execOpts);
       res.setHeader('Content-Type', 'application/json');

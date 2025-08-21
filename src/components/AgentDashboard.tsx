@@ -1022,17 +1022,34 @@ const getCurrentModel = () => {
                     <Button 
                       variant="outline" 
                       size="sm"
-                      onClick={() => {
+                      onClick={async () => {
+                        // Best-effort directory chooser. Browsers intentionally hide absolute paths.
+                        // If running in environments that expose File.path (e.g., Electron), use it.
                         const input = document.createElement('input');
                         input.type = 'file';
+                        // @ts-ignore - nonstandard but widely supported
                         input.webkitdirectory = true;
-                        input.onchange = (e: any) => {
+                        input.onchange = async (e: any) => {
                           const files = e.target.files;
-                          if (files.length > 0) {
-                            const path = files[0].webkitRelativePath.split('/')[0];
-                            setWorkspaceFolder(`./${path}`);
-                            toast({ title: "Workspace folder updated", description: `Set to: ./${path}` });
+                          if (!files || files.length === 0) return;
+                          const first: any = files[0];
+                          // Try to infer absolute directory when available (Electron/Chromium with File.path)
+                          const absFilePath: string | undefined = first?.path;
+                          const relPath: string = first?.webkitRelativePath || '';
+                          if (absFilePath && relPath) {
+                            // Derive the selected folder by trimming the relative path portion
+                            const baseDir = absFilePath.slice(0, absFilePath.length - relPath.length).replace(/[\\/]$/, '');
+                            setWorkspaceFolder(baseDir || '/');
+                            toast({ title: 'Workspace folder updated', description: `Set to: ${baseDir || '/'}` });
+                            return;
                           }
+
+                          // Fallback: browsers do not expose absolute paths. Avoid setting a misleading relative path.
+                          toast({ 
+                            title: 'Action needed', 
+                            description: 'Your browser hides real folder paths. Please paste the absolute path into the input field.',
+                            variant: 'destructive'
+                          });
                         };
                         input.click();
                       }}
@@ -1040,9 +1057,29 @@ const getCurrentModel = () => {
                       <Folder className="h-4 w-4 mr-1" />
                       Browse
                     </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={async () => {
+                        try {
+                          const res = await fetch('/api/files/list', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ cwd: workspaceFolder, path: '.', maxDepth: 0 })
+                          });
+                          const data = await res.json();
+                          if (!res.ok || !data.success) throw new Error(data.error || 'Could not access path');
+                          toast({ title: 'Workspace OK', description: `Using: ${workspaceFolder}` });
+                        } catch (e: any) {
+                          toast({ title: 'Invalid path', description: e.message || 'Path not accessible', variant: 'destructive' });
+                        }
+                      }}
+                    >
+                      Validate
+                    </Button>
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">
-                    Absolute or relative path. Shell, git, and file operations run with cwd = this path.
+                    Use an absolute path (recommended) so the agent operates in that folder. Relative paths resolve under this app's directory.
                   </p>
                 </div>
                 

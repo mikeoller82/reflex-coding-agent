@@ -98,6 +98,11 @@ Server endpoints exposed by the dev server (used by the agent):
 
 To use, enter a clear instruction in the dashboard (e.g., “add a React hook for debounced search with tests”), select a model, and Run. Set the Workspace Directory to a relative or absolute path; the agent executes all operations with `cwd` set to that directory.
 
+Important notes for global usage:
+- Prefer absolute paths (e.g., `/home/you/my-app` or `C:\Users\you\my-app`).
+- `~` and `~/...` are expanded to your home directory on the server side.
+- Browser file pickers do not expose real filesystem paths for security. The “Browse” button cannot determine the absolute path in most browsers; paste the full path into the input instead and click Validate.
+
 ## 🤝 Contributing
 
 Contributions are what make the open-source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
