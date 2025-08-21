@@ -126,6 +126,8 @@ export default function AgentDashboard() {
   const [maxAttempts, setMaxAttempts] = useState(3);
   const [verificationCmd, setVerificationCmd] = useState<string>('');
   const [strictMode, setStrictMode] = useState<boolean>(true);
+  // Allow continuing iterations even when no verification command is set
+  const [iterateWithoutVerify, setIterateWithoutVerify] = useState<boolean>(false);
   const [stats, setStats] = useState<{ totalAttempts: number; totalSuccesses: number }>({ totalAttempts: 0, totalSuccesses: 0 });
   const [attemptHistory, setAttemptHistory] = useState<Array<{ attempt: number; timestamp: string; cmd?: string; success?: boolean; stdout?: string; stderr?: string }>>([]);
   const [selectedProvider, setSelectedProvider] = useState('');
@@ -149,6 +151,8 @@ export default function AgentDashboard() {
     }
     const savedStrict = localStorage.getItem('reflex.strictMode');
     if (savedStrict !== null) setStrictMode(savedStrict === '1');
+    const savedIterNoVerify = localStorage.getItem('reflex.iterateWithoutVerify');
+    if (savedIterNoVerify !== null) setIterateWithoutVerify(savedIterNoVerify === '1');
   }, []);
   useEffect(() => {
     if (workspaceFolder) localStorage.setItem('reflex.workspaceFolder', workspaceFolder);
@@ -159,6 +163,9 @@ export default function AgentDashboard() {
   useEffect(() => {
     localStorage.setItem('reflex.strictMode', strictMode ? '1' : '0');
   }, [strictMode]);
+  useEffect(() => {
+    localStorage.setItem('reflex.iterateWithoutVerify', iterateWithoutVerify ? '1' : '0');
+  }, [iterateWithoutVerify]);
 
   const providers = [
     { id: 'OPENROUTER_API_KEY', name: 'OpenRouter', description: 'Access to multiple models', baseUrl: 'https://openrouter.ai/api/v1' },
@@ -262,9 +269,14 @@ Required behavior:
             lastFailureSummary = truncate(`${stdout}\n${stderr}`, 4000);
           }
         } else {
-          // No verification available; consider success only with user confirmation
-          addLog('thought', 'No verification command configured. Enable one for accurate reward.');
-          break;
+          // No verification available
+          if (iterateWithoutVerify) {
+            addLog('thought', 'No verification configured. Continuing without verification; reward disabled.');
+            // proceed to next attempt until maxAttempts or manual stop
+          } else {
+            addLog('thought', 'No verification command configured. Enable one for accurate reward.');
+            break;
+          }
         }
 
         if (!autoContinue || attempt >= maxAttempts) break;
@@ -1287,6 +1299,15 @@ const getCurrentModel = () => {
                     onChange={(e) => setAutoContinue(e.target.checked)}
                   />
                   <label htmlFor="auto-continue">Auto-continue until verified</label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="iterate-no-verify"
+                    type="checkbox"
+                    checked={iterateWithoutVerify}
+                    onChange={(e) => setIterateWithoutVerify(e.target.checked)}
+                  />
+                  <label htmlFor="iterate-no-verify">Iterate even without verification (no reward)</label>
                 </div>
                 <div className="flex items-center gap-2">
                   <input
