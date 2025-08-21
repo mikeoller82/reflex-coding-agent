@@ -198,14 +198,10 @@ export default function AgentDashboard() {
       addLog('thought', `Using ${providerData?.name} - ${modelId}`);
       
       // Determine verification command
-      let verifyCmd = verificationCmd.trim();
-      if (!verifyCmd) {
-        verifyCmd = await autoDetectVerificationCmd();
-        if (verifyCmd) {
-          setVerificationCmd(verifyCmd);
-          addLog('tool', `Auto-detected verification: ${verifyCmd}`);
-        }
-      }
+      // Do NOT auto-detect here anymore. Leaving the field blank disables
+      // verification during runs. Users can still click "Detect" in the UI
+      // to populate a suggested verify command when they want it.
+      const verifyCmd = verificationCmd.trim();
 
       let attempt = 0;
       let solved = false;
@@ -1316,6 +1312,7 @@ const getCurrentModel = () => {
                     else { toast({ title: 'No verification found', variant: 'destructive' }); }
                   }}>Detect</Button>
                 </div>
+                <div className="text-xs text-muted-foreground ml-[8.5rem]">Leave blank to disable verification. Use Detect to auto-fill.</div>
                 {agentState.lastVerification && (
                   <div className="text-xs text-muted-foreground">
                     <div>Last verify: {agentState.lastVerification.cmd} → {agentState.lastVerification.success ? 'success' : 'failed'}</div>
