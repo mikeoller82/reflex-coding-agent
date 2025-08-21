@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
+// import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -32,43 +32,56 @@ import {
 
 // Enhanced system prompt for real agent execution
 const SYSTEM_PROMPT = `
-You are Reflex Coder, an intelligent autonomous coding assistant with reinforcement learning capabilities.
+You are Reflex Coder, a precise, instruction-following autonomous coding agent.
 
-CORE PRINCIPLES:
-- Analyze user requests thoroughly and break them down into actionable steps
-- Generate clean, well-documented, production-ready code
-- Use appropriate design patterns and follow best practices
-- Provide comprehensive solutions with proper testing and documentation
+Instruction Hierarchy (strict):
+1) User instructions and constraints
+2) Repo-specific conventions and existing patterns
+3) Language/framework best practices
+4) Your general preferences
 
-AVAILABLE TOOLS (use JSON format when making tool calls):
-- write_file: Create/modify files {"tool":"write_file","path":"<filepath>","content":"<full_content>"}
-- run_shell: Execute shell commands {"tool":"run_shell","cmd":"<command>"}  
-- git_commit: Make git commits {"tool":"git_commit","msg":"<conventional_commit_message>"}
+Operating Rules:
+- Restate the task and list explicit requirements you must satisfy.
+- Ask concise clarifying questions if anything is ambiguous; otherwise proceed.
+- Produce a short plan first, then execute it step-by-step using tools.
+- Prefer minimal, surgical changes aligned with the repo style.
+- Validate results (build/tests/lint) when feasible; report failures and next steps.
+- Never fabricate tools, files, or APIs. Use only the tools listed below.
+- Stop and request confirmation before destructive changes (deletes/moves) unless explicitly allowed.
 
-OUTPUT GUIDELINES:
-- For tool calls: Use ONLY compact JSON format
-- For explanations: Use clear, concise natural language
-- Always validate syntax and logic before generating code
-- Include comprehensive examples and test cases
-- Document your reasoning and approach
+Available Tools (JSON-only calls; no extra text):
+- read_file: {"tool":"read_file","path":"<path>"}
+- list_files: {"tool":"list_files","path":"<dir|optional>","maxDepth":<int|optional>}
+- make_dir: {"tool":"make_dir","path":"<dir>","recursive":true}
+- write_file: {"tool":"write_file","path":"<path>","content":"<full content>","overwrite":true}
+- move_path: {"tool":"move_path","from":"<old>","to":"<new>","overwrite":true}
+- delete_path: {"tool":"delete_path","path":"<path>","recursive":true}
+- run_shell: {"tool":"run_shell","cmd":"<command>"}
+- git_commit: {"tool":"git_commit","msg":"<conventional commit message>"}
+- test_runner: {"tool":"test_runner","cmd":"<optional test command>"}
 
-QUALITY STANDARDS:
-- Write type-safe, error-handled code
-- Follow language-specific conventions and best practices
-- Include comprehensive comments and documentation
-- Create meaningful test cases
-- Use conventional commit messages when applicable
+Response Policy:
+- Tool calls: emit ONLY compact JSON objects as above, one per action.
+- Explanations: concise, action-focused natural language when not calling tools.
+- If the user requests code, prefer writing directly to files via write_file.
+- After changes, run tests or build if applicable and summarize results.
 
-When you receive a request, first analyze what needs to be done, then execute the appropriate tools to fulfill the request completely.
+Quality Bar:
+- Idiomatic, type-safe, well-structured code with error handling.
+- Clear, minimal documentation where helpful; avoid noisy comments.
+- Keep changes focused on the user’s request; avoid unrelated refactors.
 `;
 
 const TOOL_PROMPTS: Record<string, string> = {
-  write_file: `Create or modify files with complete content. Always include proper syntax, imports, and error handling.`,
-  run_shell: `Execute shell commands safely. Use for testing, building, installing dependencies, etc.`,
-  git_commit: `Make atomic git commits with conventional commit messages (feat:, fix:, docs:, etc.)`,
-  test_runner: `Run test suites and validate code quality. Use appropriate test commands for the language.`,
-  code_search: `Search codebase for existing implementations, patterns, or references before writing new code.`,
-  web_search: `Research documentation, best practices, or solutions when needed.`,
+  read_file: `Read file content before editing to maintain context and style.`,
+  list_files: `Discover project structure before adding new files.`,
+  make_dir: `Create needed directories before writing files.`,
+  write_file: `Write full file content (idempotent). Include imports and error handling.`,
+  move_path: `Rename/move paths carefully; preserve imports and references.`,
+  delete_path: `Delete only when certain. Prefer deprecation over removal.`,
+  run_shell: `Run build/test/lint or local scripts. Capture outputs.`,
+  git_commit: `Atomic commits with conventional messages (feat|fix|docs|refactor).`,
+  test_runner: `Run the project's tests or a provided command.`,
 };
 
 interface AgentState {
@@ -151,8 +164,8 @@ export default function AgentDashboard() {
 
     setIsRunning(true);
     setAgentState(prev => ({ ...prev, status: 'thinking' }));
-    addLog('thought', 'System prompt primed: RL coding copilot with autonomous reasoning');
-    addLog('tool', 'Initializing tools: write_file, run_shell, git_commit, test_runner, code_search, web_search');
+    addLog('thought', 'System prompt primed with strict instruction-following');
+    addLog('tool', 'Tools ready: read_file, list_files, make_dir, write_file, move_path, delete_path, run_shell, git_commit, test_runner');
     addLog('thought', `Processing request: ${command}`);
 
     try {
@@ -162,21 +175,19 @@ export default function AgentDashboard() {
       setAgentState(prev => ({ ...prev, status: 'coding' }));
       addLog('thought', `Using ${providerData?.name} - ${modelId}`);
       
-      // Create the agent request with enhanced system prompt
-      const agentPrompt = `${SYSTEM_PROMPT}
+      // Create the agent request (system prompt sent separately by callLLMAPI)
+      const userPrompt = `User Request: ${command}
 
-User Request: ${command}
-
-Please analyze this request and provide a step-by-step implementation plan. Then generate the necessary code files and execute any required commands. Focus on:
-1. Understanding the exact requirements
-2. Planning the implementation approach
-3. Generating clean, well-tested code
-4. Providing proper documentation
-
-Respond with JSON tool calls as specified in the system prompt.`;
+Required behavior:
+- Restate the task and list explicit requirements.
+- Propose a short, ordered plan.
+- Execute using ONLY tool-call JSON objects. No surrounding text.
+- Use the available tools to read existing code, write files, and run commands.
+- After changes, run tests or build if applicable and summarize results.
+- Stop and ask for confirmation before destructive actions unless the request authorizes it.`;
 
       // Make the actual API call
-      const response = await callLLMAPI(firstProvider, modelId, agentPrompt);
+      const response = await callLLMAPI(firstProvider, modelId, userPrompt);
       
       if (response) {
         setAgentState(prev => ({ ...prev, status: 'testing' }));
@@ -214,7 +225,7 @@ Respond with JSON tool calls as specified in the system prompt.`;
     }
   };
 
-  const callLLMAPI = async (provider: string, modelId: string, prompt: string) => {
+  const callLLMAPI = async (provider: string, modelId: string, userPrompt: string) => {
     const providerData = providers.find(p => p.id === provider);
     if (!providerData) throw new Error('Provider not found');
 
@@ -236,7 +247,10 @@ Respond with JSON tool calls as specified in the system prompt.`;
         headers['X-Title'] = 'Reflex Coder';
         requestBody = {
           model: modelId,
-          messages: [{ role: 'user', content: prompt }],
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'user', content: userPrompt },
+          ],
           temperature: 0.7,
           max_tokens: 4000,
         };
@@ -249,7 +263,8 @@ Respond with JSON tool calls as specified in the system prompt.`;
         requestBody = {
           model: modelId,
           max_tokens: 4000,
-          messages: [{ role: 'user', content: prompt }],
+          system: SYSTEM_PROMPT,
+          messages: [{ role: 'user', content: userPrompt }],
         };
         break;
       
@@ -258,7 +273,10 @@ Respond with JSON tool calls as specified in the system prompt.`;
         headers['Authorization'] = `Bearer ${savedApiKey}`;
         requestBody = {
           model: modelId,
-          messages: [{ role: 'user', content: prompt }],
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'user', content: userPrompt },
+          ],
           temperature: 0.7,
           max_tokens: 4000,
         };
@@ -269,7 +287,10 @@ Respond with JSON tool calls as specified in the system prompt.`;
         headers['Authorization'] = `Bearer ${savedApiKey}`;
         requestBody = {
           model: modelId,
-          messages: [{ role: 'user', content: prompt }],
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'user', content: userPrompt },
+          ],
           temperature: 0.7,
           max_tokens: 4000,
         };
@@ -280,7 +301,10 @@ Respond with JSON tool calls as specified in the system prompt.`;
         headers['Authorization'] = `Bearer ${savedApiKey}`;
         requestBody = {
           model: modelId,
-          messages: [{ role: 'user', content: prompt }],
+          messages: [
+            { role: 'system', content: SYSTEM_PROMPT },
+            { role: 'user', content: userPrompt },
+          ],
           temperature: 0.7,
           max_tokens: 4000,
         };
@@ -494,6 +518,24 @@ Respond with JSON tool calls as specified in the system prompt.`;
           } catch (e: any) {
             addLog('action', `❌ run_shell failed: ${e.message}`);
           }
+        }
+        break;
+
+      case 'test_runner':
+        try {
+          const cmd = params.cmd || 'npm test --silent';
+          addLog('action', `Running tests: ${cmd}`);
+          const res = await fetch('/api/shell', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cmd, cwd: workspaceFolder })
+          });
+          const data = await res.json();
+          if (!res.ok || !data.success) throw new Error(data.error || 'tests failed');
+          if (data.stdout) addLog('tool', `test stdout:\n${data.stdout}`);
+          if (data.stderr) addLog('tool', `test stderr:\n${data.stderr}`);
+        } catch (e: any) {
+          addLog('action', `❌ test_runner failed: ${e.message}`);
         }
         break;
       
@@ -730,7 +772,7 @@ const getCurrentModel = () => {
                 Clear
               </Button>
             </div>
-            <ScrollArea className="h-[500px] w-full pr-4">
+            <div className="w-full pr-1">
               <div className="space-y-3">
                 {logs.map((log, i) => (
                   <div key={i} className="flex items-start gap-3 text-sm">
@@ -750,7 +792,7 @@ const getCurrentModel = () => {
                       </div>
                       <p className="text-foreground">{log.content}</p>
                       {log.type === 'file' && log.code && (
-                        <div className="mt-2 p-3 bg-terminal/50 rounded border border-border font-mono text-xs text-muted-foreground max-h-48 overflow-y-auto">
+                        <div className="mt-2 p-3 bg-terminal/50 rounded border border-border font-mono text-xs text-muted-foreground">
                           <div className="flex items-center justify-between mb-2">
                             <span className="text-blue-400">{log.filename}</span>
                             <Button 
@@ -767,8 +809,7 @@ const getCurrentModel = () => {
                             </Button>
                           </div>
                           <pre className="whitespace-pre-wrap text-xs leading-relaxed">
-                            {log.code.split('\n').slice(0, 10).join('\n')}
-                            {log.code.split('\n').length > 10 && '\n...'}
+                            {log.code}
                           </pre>
                         </div>
                       )}
@@ -776,7 +817,7 @@ const getCurrentModel = () => {
                   </div>
                 ))}
               </div>
-            </ScrollArea>
+            </div>
           </Card>
 
           {/* Generated Code Panel */}
@@ -795,7 +836,7 @@ const getCurrentModel = () => {
                   ✕
                 </Button>
               </div>
-              <ScrollArea className="h-[500px] w-full pr-4">
+              <div className="w-full pr-1">
                 <div className="space-y-3">
                   {generatedFiles.map((file, i) => (
                     <div key={i} className="border border-border rounded-lg overflow-hidden">
@@ -831,7 +872,7 @@ const getCurrentModel = () => {
                           </Button>
                         </div>
                       </div>
-                      <div className="p-3 bg-terminal/30 max-h-80 overflow-y-auto">
+                      <div className="p-3 bg-terminal/30">
                         <pre className="text-xs font-mono text-muted-foreground leading-relaxed whitespace-pre-wrap">
                           {file.content}
                         </pre>
@@ -839,7 +880,7 @@ const getCurrentModel = () => {
                     </div>
                   ))}
                 </div>
-              </ScrollArea>
+              </div>
             </Card>
           )}
 
