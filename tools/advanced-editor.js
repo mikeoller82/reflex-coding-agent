@@ -1,15 +1,13 @@
-#!/usr/bin/env node
-
-const fs = require('fs').promises;
-const path = require('path');
-const FileUtilities = require('./file-utilities');
+import fs from 'fs/promises';
+import path from 'path';
+import FileUtilities from './file-utilities.js';
 
 /**
  * Advanced Editor with Claude Code-like capabilities
  * Provides intelligent editing, refactoring, and code manipulation
  */
 
-class AdvancedEditor extends FileUtilities {
+export default class AdvancedEditor extends FileUtilities {
     constructor(rootPath = process.cwd()) {
         super(rootPath);
         this.editorHistory = [];
@@ -349,13 +347,13 @@ class AdvancedEditor extends FileUtilities {
             if (!trimmed) return '';
 
             // Adjust indent level based on brackets
-            if (trimmed.includes('}') || trimmed.includes(']') || trimmed.includes(')')} {
+            if (trimmed.includes('}') || trimmed.includes(']') || trimmed.includes(')')) {
                 currentIndent = Math.max(0, currentIndent - 1);
             }
 
             const indentedLine = indentChar.repeat(currentIndent) + trimmed;
 
-            if (trimmed.includes('{') || trimmed.includes('[') || trimmed.includes('(')} {
+            if (trimmed.includes('{') || trimmed.includes('[') || trimmed.includes('(')) {
                 currentIndent++;
             }
 
@@ -371,50 +369,4 @@ class AdvancedEditor extends FileUtilities {
     }
 }
 
-// CLI Interface
-if (require.main === module) {
-    const editor = new AdvancedEditor();
-    const [,, command, filePath, ...args] = process.argv;
-
-    async function runCommand() {
-        try {
-            switch (command) {
-                case 'replace':
-                    const [search, replace] = args;
-                    const result = await editor.smartReplace(filePath, search, replace, { replaceAll: true });
-                    console.log(JSON.stringify(result, null, 2));
-                    break;
-
-                case 'insert':
-                    const [target, content] = args;
-                    const insertResult = await editor.insertAt(filePath, isNaN(target) ? target : parseInt(target), content);
-                    console.log(JSON.stringify(insertResult, null, 2));
-                    break;
-
-                case 'remove':
-                    const removeResult = await editor.removeLines(filePath, args[0]);
-                    console.log(JSON.stringify(removeResult, null, 2));
-                    break;
-
-                case 'format':
-                    const formatResult = await editor.formatCode(filePath);
-                    console.log(JSON.stringify(formatResult, null, 2));
-                    break;
-
-                default:
-                    console.log('Usage:');
-                    console.log('  node advanced-editor.js replace <file> <search> <replace>');
-                    console.log('  node advanced-editor.js insert <file> <target> <content>');
-                    console.log('  node advanced-editor.js remove <file> <pattern>');
-                    console.log('  node advanced-editor.js format <file>');
-            }
-        } catch (error) {
-            console.error('Error:', error.message);
-            process.exit(1);
-        }
-    }
-
-    runCommand();
-}
-
-module.exports = AdvancedEditor;
+// CLI intentionally removed in ESM mode to avoid dual-mode complexity

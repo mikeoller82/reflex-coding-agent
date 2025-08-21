@@ -28,6 +28,7 @@ import {
   Copy,
   Download
 } from 'lucide-react';
+// Removed template-based CodegenPanel; agent now handles real codegen via tool calls
 
 // Enhanced system prompt for real agent execution
 const SYSTEM_PROMPT = `
@@ -305,24 +306,32 @@ Respond with JSON tool calls as specified in the system prompt.`;
     addLog('thought', 'Processing model response...');
     
     try {
-      // Try to extract JSON tool calls from the response
-      const jsonMatches = response.match(/\{[^{}]*"tool"[^{}]*\}/g);
-      
-      if (jsonMatches && jsonMatches.length > 0) {
-        for (const jsonStr of jsonMatches) {
-          try {
-            const toolCall = JSON.parse(jsonStr);
-            await executeToolCall(toolCall);
-          } catch (e) {
-            addLog('action', `⚠️ Could not parse tool call: ${jsonStr}`);
-          }
+      // Try to extract tool calls from fenced JSON or inline objects
+      let toolCalls: any[] = [];
+      const fenced = extractCodeBlocks(response);
+      for (const block of fenced) {
+        const content = block.code.trim();
+        if (content.startsWith('{') && content.includes('"tool"')) {
+          try { toolCalls.push(JSON.parse(content)); } catch (_) {}
+        }
+      }
+      if (toolCalls.length === 0) {
+        const inlineMatches = response.match(/\{[\s\S]*?\}/g) || [];
+        for (const m of inlineMatches) {
+          if (m.includes('"tool"')) { try { toolCalls.push(JSON.parse(m)); } catch (_) {} }
+        }
+      }
+
+      if (toolCalls.length > 0) {
+        for (const call of toolCalls) {
+          await executeToolCall(call);
         }
       } else {
         // If no tool calls, treat as code generation
         addLog('thought', 'No tool calls detected, treating as code generation...');
         
         // Extract code blocks from response
-        const codeBlocks = extractCodeBlocks(response);
+        const codeBlocks = fenced;
         
         if (codeBlocks.length > 0) {
           const generatedFiles: {filename: string, content: string}[] = [];
@@ -358,25 +367,58 @@ Respond with JSON tool calls as specified in the system prompt.`;
     switch (tool) {
       case 'write_file':
         if (params.path && params.content) {
-          addLog('file', `Writing file: ${params.path}`, undefined, params.content, params.path);
-          setGeneratedFiles(prev => [...prev, { filename: params.path, content: params.content }]);
-          setShowCodePanel(true);
+          try {
+            // Persist to filesystem via dev server API
+            const res = await fetch('/api/files/write', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ path: params.path, content: params.content, overwrite: true })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.error || 'write failed');
+            addLog('file', `Wrote file: ${params.path}`, undefined, params.content, params.path);
+            setGeneratedFiles(prev => [...prev, { filename: params.path, content: params.content }]);
+            setShowCodePanel(true);
+          } catch (e: any) {
+            addLog('action', `❌ write_file failed: ${e.message}`);
+          }
         }
         break;
       
       case 'run_shell':
         if (params.cmd) {
           addLog('action', `Running command: ${params.cmd}`);
-          // In a real implementation, you'd execute the shell command
-          // For now, just simulate the output
-          addLog('tool', `Command output: [Command execution not implemented in browser environment]`);
+          try {
+            const res = await fetch('/api/shell', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ cmd: params.cmd })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.error || 'shell failed');
+            if (data.stdout) addLog('tool', `stdout:\n${data.stdout}`);
+            if (data.stderr) addLog('tool', `stderr:\n${data.stderr}`);
+          } catch (e: any) {
+            addLog('action', `❌ run_shell failed: ${e.message}`);
+          }
         }
         break;
       
       case 'git_commit':
         if (params.msg) {
-          addLog('action', `Git commit: ${params.msg}`);
-          addLog('tool', `✅ Committed with message: ${params.msg}`);
+          try {
+            const res = await fetch('/api/git/commit', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ msg: params.msg })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.error || 'commit failed');
+            addLog('action', `Git commit: ${params.msg}`);
+            addLog('tool', `✅ Committed: ${data.commit || params.msg}`);
+          } catch (e: any) {
+            addLog('action', `❌ git_commit failed: ${e.message}`);
+          }
         }
         break;
       
@@ -710,6 +752,8 @@ const getCurrentModel = () => {
 
           {/* Settings Panel */}
           <div className="space-y-6">
+            {/* Code Generation panel removed; agent handles NL → code directly */}
+
             {/* Workspace Settings */}
             <Card className="p-6">
               <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">

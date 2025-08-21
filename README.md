@@ -78,6 +78,21 @@ You need to have [Node.js](https://nodejs.org/) and [npm](https://www.npmjs.com/
     ```
     The application will be available at `http://localhost:5173` (or another port if 5173 is busy).
 
+## 🧩 Natural Language → Code
+
+Reflex Coder now generates and persists code directly from natural language instructions, similar to Claude or Codex. The agent:
+- Analyzes your request and plans implementation steps.
+- Emits JSON tool calls like `write_file`, `run_shell`, and `git_commit`.
+- Writes files to the local workspace via built-in dev server APIs.
+- Shows all generated files in the “Generated Code” panel for quick copy/download.
+
+Server endpoints exposed by the dev server (used by the agent):
+- `POST /api/files/write` with `{ path, content, overwrite }` to write files.
+- `POST /api/shell` with `{ cmd }` to execute shell commands and return output.
+- `POST /api/git/commit` with `{ msg }` to commit changes.
+
+To use, enter a clear instruction in the dashboard (e.g., “add a React hook for debounced search with tests”), select a model, and Run. The agent will generate files and persist them to your repo.
+
 ## 🤝 Contributing
 
 Contributions are what make the open-source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
