@@ -64,7 +64,8 @@ Response Policy:
 - Tool calls: emit ONLY compact JSON objects as above, one per action.
 - Explanations: concise, action-focused natural language when not calling tools.
 - If the user requests code, prefer writing directly to files via write_file.
-- After changes, run tests or build if applicable and summarize results.
+- After changes, run tests or build if applicable.
+- Do not claim success until verification passes.
 
 Quality Bar:
 - Idiomatic, type-safe, well-structured code with error handling.
@@ -85,13 +86,16 @@ const TOOL_PROMPTS: Record<string, string> = {
 };
 
 interface AgentState {
-  status: 'idle' | 'thinking' | 'coding' | 'testing' | 'committing' | 'training';
+  status: 'idle' | 'thinking' | 'coding' | 'testing' | 'verifying' | 'committing' | 'training';
   thoughts: string[];
   currentAction: string;
   tools: string[];
   reward: number;
   episode: number;
   trajectory: any[];
+  attempts?: number;
+  successCount?: number;
+  lastVerification?: { cmd: string; success: boolean; stdout?: string; stderr?: string } | null;
 }
 
 interface LogEntry {
@@ -118,6 +122,12 @@ export default function AgentDashboard() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [trainingProgress, setTrainingProgress] = useState(0);
+  const [autoContinue, setAutoContinue] = useState(true);
+  const [maxAttempts, setMaxAttempts] = useState(3);
+  const [verificationCmd, setVerificationCmd] = useState<string>('');
+  const [strictMode, setStrictMode] = useState<boolean>(true);
+  const [stats, setStats] = useState<{ totalAttempts: number; totalSuccesses: number }>({ totalAttempts: 0, totalSuccesses: 0 });
+  const [attemptHistory, setAttemptHistory] = useState<Array<{ attempt: number; timestamp: string; cmd?: string; success?: boolean; stdout?: string; stderr?: string }>>([]);
   const [selectedProvider, setSelectedProvider] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [availableModels, setAvailableModels] = useState<Record<string, any[]>>({});
@@ -133,10 +143,22 @@ export default function AgentDashboard() {
   useEffect(() => {
     const saved = localStorage.getItem('reflex.workspaceFolder');
     if (saved) setWorkspaceFolder(saved);
+    const savedStats = localStorage.getItem('reflex.stats');
+    if (savedStats) {
+      try { setStats(JSON.parse(savedStats)); } catch {}
+    }
+    const savedStrict = localStorage.getItem('reflex.strictMode');
+    if (savedStrict !== null) setStrictMode(savedStrict === '1');
   }, []);
   useEffect(() => {
     if (workspaceFolder) localStorage.setItem('reflex.workspaceFolder', workspaceFolder);
   }, [workspaceFolder]);
+  useEffect(() => {
+    localStorage.setItem('reflex.stats', JSON.stringify(stats));
+  }, [stats]);
+  useEffect(() => {
+    localStorage.setItem('reflex.strictMode', strictMode ? '1' : '0');
+  }, [strictMode]);
 
   const providers = [
     { id: 'OPENROUTER_API_KEY', name: 'OpenRouter', description: 'Access to multiple models', baseUrl: 'https://openrouter.ai/api/v1' },
@@ -163,7 +185,7 @@ export default function AgentDashboard() {
     }
 
     setIsRunning(true);
-    setAgentState(prev => ({ ...prev, status: 'thinking' }));
+    setAgentState(prev => ({ ...prev, status: 'thinking', attempts: 0 }));
     addLog('thought', 'System prompt primed with strict instruction-following');
     addLog('tool', 'Tools ready: read_file, list_files, make_dir, write_file, move_path, delete_path, run_shell, git_commit, test_runner');
     addLog('thought', `Processing request: ${command}`);
@@ -175,8 +197,30 @@ export default function AgentDashboard() {
       setAgentState(prev => ({ ...prev, status: 'coding' }));
       addLog('thought', `Using ${providerData?.name} - ${modelId}`);
       
-      // Create the agent request (system prompt sent separately by callLLMAPI)
-      const userPrompt = `User Request: ${command}
+      // Determine verification command
+      let verifyCmd = verificationCmd.trim();
+      if (!verifyCmd) {
+        verifyCmd = await autoDetectVerificationCmd();
+        if (verifyCmd) {
+          setVerificationCmd(verifyCmd);
+          addLog('tool', `Auto-detected verification: ${verifyCmd}`);
+        }
+      }
+
+      let attempt = 0;
+      let solved = false;
+      let lastFailureSummary = '';
+      
+      while (true) {
+        attempt += 1;
+        setAgentState(prev => ({ ...prev, status: 'coding', attempts: attempt }));
+        addLog('thought', `Attempt ${attempt}: planning and executing...`);
+
+        // Create the agent request (system prompt sent separately by callLLMAPI)
+        const userPrompt = `User Request: ${command}
+
+Context:
+${lastFailureSummary ? `Previous attempt failed. Key errors/output to address:\n${lastFailureSummary}` : 'First attempt. No prior failures.'}
 
 Required behavior:
 - Restate the task and list explicit requirements.
@@ -184,27 +228,63 @@ Required behavior:
 - Execute using ONLY tool-call JSON objects. No surrounding text.
 - Use the available tools to read existing code, write files, and run commands.
 - After changes, run tests or build if applicable and summarize results.
-- Stop and ask for confirmation before destructive actions unless the request authorizes it.`;
+- Do not claim success until verification passes.
+- Stop and ask for confirmation before destructive actions unless authorized.`;
 
-      // Make the actual API call
-      const response = await callLLMAPI(firstProvider, modelId, userPrompt);
-      
-      if (response) {
+        // Make the API call
+        const response = await callLLMAPI(firstProvider, modelId, (strictMode ? `${userPrompt}\n\nIMPORTANT: Strict mode is enabled. Output ONLY JSON tool call objects, one per action, with no extra text.` : userPrompt));
+        if (!response) throw new Error('No response from model');
+
         setAgentState(prev => ({ ...prev, status: 'testing' }));
         addLog('action', 'Analyzing response and extracting implementation details...');
-        
-        // Process the API response
-        await processAgentResponse(response);
-        
+        const proc = await processAgentResponse(response, { strictMode });
+        if (!proc.ok) {
+          addLog('action', `Strict mode: ${proc.message || 'Expected JSON tool calls only.'}`);
+          if (!autoContinue || attempt >= maxAttempts) break;
+          lastFailureSummary = truncate(`Strict mode: ${proc.message || 'Expected JSON tool calls only.'}`, 4000);
+          continue;
+        }
+
+        // Verification step
+        if (verifyCmd) {
+          setAgentState(prev => ({ ...prev, status: 'verifying' }));
+          addLog('action', `Verifying with: ${verifyCmd}`);
+          const res = await postJSON('/api/shell', { cmd: verifyCmd, cwd: workspaceFolder });
+          const success = !!res.success;
+          const stdout = res.stdout || '';
+          const stderr = res.stderr || res.error || '';
+          setAgentState(prev => ({ ...prev, lastVerification: { cmd: verifyCmd, success, stdout, stderr } }));
+          if (stdout) addLog('tool', `verify stdout:\n${stdout}`);
+          if (stderr) addLog('tool', `verify stderr:\n${stderr}`);
+          // persist attempt entry and stats
+          setAttemptHistory(prev => [...prev, { attempt, timestamp: new Date().toLocaleTimeString(), cmd: verifyCmd, success, stdout: truncate(stdout, 1000), stderr: truncate(stderr, 1000) }]);
+          setStats(prev => ({ ...prev, totalAttempts: prev.totalAttempts + 1, totalSuccesses: prev.totalSuccesses + (success ? 1 : 0) }));
+          if (success) {
+            solved = true;
+            break;
+          } else {
+            lastFailureSummary = truncate(`${stdout}\n${stderr}`, 4000);
+          }
+        } else {
+          // No verification available; consider success only with user confirmation
+          addLog('thought', 'No verification command configured. Enable one for accurate reward.');
+          break;
+        }
+
+        if (!autoContinue || attempt >= maxAttempts) break;
+      }
+
+      if (solved) {
         setAgentState(prev => ({ 
           ...prev, 
           status: 'training',
-          reward: prev.reward + 2.5 
+          reward: prev.reward + 1,
+          successCount: (prev.successCount || 0) + 1
         }));
-        addLog('reward', 'Task completed successfully! Reward: +2.5');
-        setTrainingProgress(prev => Math.min(prev + 15, 100));
+        addLog('reward', '✅ Verified success. Reward +1');
+        updateTrainingProgress();
       } else {
-        throw new Error('No response from model');
+        addLog('action', `Stopped after ${attempt} attempt(s)${autoContinue ? '' : ' (auto-continue disabled)'}.`);
       }
 
     } catch (error) {
@@ -223,6 +303,33 @@ Required behavior:
       }));
       setIsRunning(false);
     }
+  };
+
+  const postJSON = async (url: string, body: any) => {
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    return { status: res.status, ok: res.ok, ...data } as any;
+  };
+
+  const autoDetectVerificationCmd = async (): Promise<string> => {
+    try {
+      const res = await postJSON('/api/files/read', { path: 'package.json', cwd: workspaceFolder });
+      if (res.success && res.content) {
+        const pkg = JSON.parse(res.content);
+        const scripts = pkg.scripts || {};
+        if (scripts.test) return 'npm test --silent';
+        if (scripts.build) return 'npm run build';
+      }
+      const tsc = await postJSON('/api/files/read', { path: 'tsconfig.json', cwd: workspaceFolder });
+      if (tsc.success) return 'npx tsc -noEmit';
+    } catch {}
+    return '';
+  };
+
+  const truncate = (s: string, n: number) => (s.length > n ? s.slice(0, n) + '\n...' : s);
+
+  const updateTrainingProgress = () => {
+    setTrainingProgress(prev => Math.min(prev + 10, 100));
   };
 
   const callLLMAPI = async (provider: string, modelId: string, userPrompt: string) => {
@@ -335,7 +442,7 @@ Required behavior:
     }
   };
 
-  const processAgentResponse = async (response: string) => {
+  const processAgentResponse = async (response: string, opts?: { strictMode?: boolean }): Promise<{ ok: boolean; message?: string }> => {
     addLog('thought', 'Processing model response...');
     
     try {
@@ -359,7 +466,11 @@ Required behavior:
         for (const call of toolCalls) {
           await executeToolCall(call);
         }
+        return { ok: true };
       } else {
+        if (opts?.strictMode) {
+          return { ok: false, message: 'No valid JSON tool calls found.' };
+        }
         // If no tool calls, treat as code generation
         addLog('thought', 'No tool calls detected, treating as code generation...');
         
@@ -386,9 +497,11 @@ Required behavior:
           // Just show the response as a thought
           addLog('thought', `Model response: ${response.substring(0, 500)}${response.length > 500 ? '...' : ''}`);
         }
+        return { ok: true };
       }
     } catch (error) {
       addLog('action', `❌ Error processing response: ${error.message}`);
+      return { ok: false, message: error.message };
     }
   };
 
@@ -889,12 +1002,12 @@ const getCurrentModel = () => {
             {/* Code Generation panel removed; agent handles NL → code directly */}
 
             {/* Workspace Settings */}
-            <Card className="p-6">
-              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <Folder className="h-5 w-5 text-primary" />
-                Workspace Settings
-              </h3>
-              <div className="space-y-4">
+          <Card className="p-6">
+            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <Folder className="h-5 w-5 text-primary" />
+              Workspace Settings
+            </h3>
+            <div className="space-y-4">
                 <div>
                   <label className="text-sm font-medium text-muted-foreground mb-2 block">
                     Workspace Directory
@@ -934,7 +1047,7 @@ const getCurrentModel = () => {
                 </div>
                 
                 <Separator />
-                
+
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <p className="text-muted-foreground">Status</p>
@@ -943,6 +1056,14 @@ const getCurrentModel = () => {
                   <div>
                     <p className="text-muted-foreground">Permissions</p>
                     <p className="text-lg font-mono text-primary">Read/Write</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Attempts</p>
+                    <p className="text-lg font-mono">{agentState.attempts || 0}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Verified Successes</p>
+                    <p className="text-lg font-mono">{agentState.successCount || 0}</p>
                   </div>
                 </div>
               </div>
@@ -1052,11 +1173,17 @@ const getCurrentModel = () => {
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <p className="text-muted-foreground">Success Rate</p>
-                    <p className="text-lg font-mono text-agent-success">87%</p>
+                    <p className="text-lg font-mono text-agent-success">{(() => {
+                      const rate = stats.totalAttempts > 0 ? (stats.totalSuccesses / stats.totalAttempts) * 100 : 0;
+                      return `${rate.toFixed(0)}%`;
+                    })()}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Avg Steps</p>
-                    <p className="text-lg font-mono text-primary">5.2</p>
+                    <p className="text-lg font-mono text-primary">{(() => {
+                      const avg = stats.totalSuccesses > 0 ? (stats.totalAttempts / stats.totalSuccesses) : stats.totalAttempts;
+                      return avg.toFixed(1);
+                    })()}</p>
                   </div>
                 </div>
               </div>
@@ -1102,7 +1229,7 @@ const getCurrentModel = () => {
                 </div>
                 <div className="flex justify-between">
                   <span>Mode:</span>
-                  <span className="font-mono text-agent-success">autonomous</span>
+                  <span className="font-mono text-agent-success">autonomous (verify)</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Sandbox:</span>
@@ -1112,6 +1239,88 @@ const getCurrentModel = () => {
                   <span>Project:</span>
                   <span className="font-mono text-muted-foreground">{workspaceFolder}</span>
                 </div>
+              </div>
+            </Card>
+
+            {/* Verification & Auto-Continue */}
+            <Card className="p-6">
+              <h3 className="text-lg font-semibold mb-4">Verification</h3>
+              <div className="space-y-3 text-sm">
+                <div className="flex items-center gap-2">
+                  <input
+                    id="auto-continue"
+                    type="checkbox"
+                    checked={autoContinue}
+                    onChange={(e) => setAutoContinue(e.target.checked)}
+                  />
+                  <label htmlFor="auto-continue">Auto-continue until verified</label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="strict-mode"
+                    type="checkbox"
+                    checked={strictMode}
+                    onChange={(e) => setStrictMode(e.target.checked)}
+                  />
+                  <label htmlFor="strict-mode">Strict mode (JSON tool calls only)</label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="w-32 text-muted-foreground">Max attempts</label>
+                  <Input type="number" min={1} max={10} value={maxAttempts}
+                    onChange={(e) => setMaxAttempts(Math.max(1, Math.min(10, Number(e.target.value) || 1)))}
+                    className="w-24 text-sm"/>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="w-32 text-muted-foreground">Verify command</label>
+                  <Input value={verificationCmd} onChange={(e) => setVerificationCmd(e.target.value)} placeholder="e.g. npm test --silent" className="font-mono"/>
+                  <Button variant="outline" size="sm" onClick={async () => {
+                    const auto = await autoDetectVerificationCmd();
+                    if (auto) { setVerificationCmd(auto); toast({ title: 'Detected', description: auto }); }
+                    else { toast({ title: 'No verification found', variant: 'destructive' }); }
+                  }}>Detect</Button>
+                </div>
+                {agentState.lastVerification && (
+                  <div className="text-xs text-muted-foreground">
+                    <div>Last verify: {agentState.lastVerification.cmd} → {agentState.lastVerification.success ? 'success' : 'failed'}</div>
+                  </div>
+                )}
+                <Separator />
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Total attempts: {stats.totalAttempts}</span>
+                  <span>Verified successes: {stats.totalSuccesses}</span>
+                  <Button variant="ghost" size="sm" onClick={() => { setStats({ totalAttempts: 0, totalSuccesses: 0 }); setAttemptHistory([]); toast({ title: 'Stats reset' }); }}>Reset stats</Button>
+                </div>
+              </div>
+            </Card>
+
+            {/* Results Summary */}
+            <Card className="p-6">
+              <h3 className="text-lg font-semibold mb-4">Results Summary</h3>
+              <div className="space-y-2">
+                {attemptHistory.length === 0 && (
+                  <div className="text-sm text-muted-foreground">No attempts yet.</div>
+                )}
+                {attemptHistory.map((a) => (
+                  <div key={a.attempt + '-' + a.timestamp} className="border border-border rounded p-3 text-xs">
+                    <div className="flex justify-between mb-2">
+                      <div className="font-mono">Attempt {a.attempt}</div>
+                      <div className={a.success ? 'text-agent-success' : 'text-red-400'}>{a.success ? 'verified' : 'failed'}</div>
+                    </div>
+                    <div className="text-muted-foreground">cmd: <span className="font-mono">{a.cmd}</span></div>
+                    {a.stdout && (
+                      <div className="mt-2">
+                        <div className="text-muted-foreground">stdout</div>
+                        <pre className="whitespace-pre-wrap text-[11px] leading-relaxed text-muted-foreground bg-terminal/30 p-2 rounded">{a.stdout}</pre>
+                      </div>
+                    )}
+                    {a.stderr && (
+                      <div className="mt-2">
+                        <div className="text-muted-foreground">stderr</div>
+                        <pre className="whitespace-pre-wrap text-[11px] leading-relaxed text-muted-foreground bg-terminal/30 p-2 rounded">{a.stderr}</pre>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             </Card>
           </div>
